@@ -23,6 +23,7 @@
 #include <string>
 #include <algorithm>
 #include <math.h>
+#include <Richedit.h>
 #include "ConfigHandler.h"
 #include "Term.h"
 #include "CommandHandler.h"
@@ -68,79 +69,111 @@ void CCommandHandler::vSetText(HWND hEditBox, const WCHAR* pszwNewText) {
     /** Set the selection at its end:                                                 */
     dwIndex = wcslen(buffer);
     SendMessage(hEditBox, EM_SETSEL, dwIndex, dwIndex);
+    /** Apply colors:                                                                 */
+    vColorizeText(hEditBox);
 }
+
+
 
 /** Handler for a command to be executed: *********************************************/
 
+
 void CCommandHandler::vProcEnter(HWND hMain, HWND hEditBox) {
-    TCHAR        buffer[C_TEXTBUFSIZE];
-    DWORD        dwIndex;
-    DWORD        dwStartPos;
-    WCHAR*       pszwStart;
-    /** Get the window-text:                                                          */
-    GetWindowText(hEditBox, buffer, sizeof(buffer));
-    dwIndex = wcslen(buffer);
-    /** Check, if there's enough to be processed:                                     */
-    if (dwIndex < (m_dwEditLastLF + 4)) return;
-    /** Fetch the last CR.                                                            */
-    /** Note, that this masks the end of the second to last line!                     */
-    dwStartPos = dwFindNthLastCR(buffer, 1);
-    /** When this is not the beginning of the string, move behind the CR:             */
-    if (dwStartPos > 0) dwStartPos++;
-    /** Check, if there's enough input:                                               */
-    if (wcslen(buffer) < dwStartPos + 2) return;
-    /** Cut out the last line as argument and the part before as history:             */
-    pszwStart = &buffer[dwStartPos + 2];
-    buffer[dwStartPos] = 0;
-    /** Parse a command, if there is one:                                             */
-    if (wcscmp(pszwStart, L"exit") == 0) {
-        /** Exit - Send a destroy-message to the main window:                         */
-        wcscat(buffer, L"> ");
-        SetWindowText(hEditBox, buffer);
-        SendMessage(hMain, WM_DESTROY, 0, 0);
-        return;
+    // Get current line index (line with caret)
+    DWORD dwIndex;
+    CHARRANGE cr;
+    CHARFORMAT2W cfDef = { sizeof(CHARFORMAT2W) };
+    std::wstring sInput;
+    std::wstring sFullOutput;
+    
+    DWORD dwLineIndex = SendMessage(hEditBox, EM_LINEINDEX, -1, 0);
+    // Get length of text
+    DWORD dwTextLen = GetWindowTextLength(hEditBox);
+    
+    // Get text from this line only?
+    // Get everything from dwLineIndex to end
+    dwIndex = dwTextLen - dwLineIndex;
+    if (dwIndex <= 2) return; // Only prompt or empty
+    
+    WCHAR* pszBuff = new WCHAR[dwIndex + 1];
+    TEXTRANGEW tr;
+    tr.chrg.cpMin = dwLineIndex;
+    tr.chrg.cpMax = dwTextLen;
+    tr.lpstrText = pszBuff;
+    SendMessage(hEditBox, EM_GETTEXTRANGE, 0, (LPARAM)&tr);
+    // Null terminate manually just in case
+    // Note: cpMax - cpMin is length.
+    // EM_GETTEXTRANGE needs buffer of size (cpMax - cpMin + 1)
+    
+    sInput = pszBuff;
+    delete[] pszBuff;
+    
+    // Check prompt
+    if (sInput.substr(0, 2) != L"> ") return;
+    
+    // Strip prompt
+    sInput = sInput.substr(2);
+    // Trim newlines from end if any (user pressed Enter, so there shouldn't be valid ones, but...)
+    while (!sInput.empty() && (sInput.back() == L'\r' || sInput.back() == L'\n')) {
+        sInput.pop_back();
     }
-    else if (wcscmp(pszwStart, L"help") == 0) {
-        /** Help - Externally open the manual:                                        */
-        wcscat(buffer, L"> ");
-        ShellExecute(NULL, L"open", L"PeaCalc.html", NULL, NULL, SW_SHOW);
-    }
-    else if (wcsncmp(pszwStart, L"license", 7) == 0) {
-        /** License - Externally open the GPL:                                        */
-        wcscat(buffer, L"> ");
-        ShellExecute(NULL, L"open", L"LICENSE.txt", NULL, NULL, SW_SHOW);
-    }
-    else if (wcsncmp(pszwStart, L"clear", 5) == 0) {
-        /** Clear - Clear the text-box text:                                          */
-        wcscpy(buffer, L"> ");
-    }
-    else if (wcsncmp(pszwStart, L"info", 4) == 0) {
-        /** Info - Add the info-text:                                                 */
-        wcscat(buffer, L"  info\r\n");
-        wcscat(buffer, m_pszwInfoText);
-    }
-    else if (wcsncmp(pszwStart, L"min", 3) == 0) {
-        /** Min - Send a minimize-message to the main window:                         */
-        wcscat(buffer, L"> ");
-        SendMessage(hMain, WM_SYSCOMMAND, SC_MINIMIZE, 0);
-    }
-    else {
-        /** Run the mathematical handler and attach its output:                       */
-        wcscat(buffer, vProcMath(std::wstring(pszwStart)).c_str());
-    }
-    /** Check, if the text has to be clipped:                                         */
-    dwIndex = dwFindNthLastCR(buffer, m_pConfig->iLines);
-    if (dwIndex>0) {
-        vRollback(buffer, &buffer[dwIndex + 1]);
-    }
-    SetWindowText(hEditBox, buffer);
-    /** Store the new starting-location:                                              */
-    m_dwEditLastLF = dwFindNthLastCR(buffer, 1);
-    /**  Set the selection after the last character:                                  */
-    dwIndex = wcslen(buffer);
-    SendMessage(hEditBox, EM_SETSEL, dwIndex, dwIndex);
-    /** And trigger a scroll:                                                         */
+
+    // Commands
+    if (sInput == L"exit") {
+         SendMessage(hMain, WM_DESTROY, 0, 0);
+         return;
+    } else if (sInput == L"clear") {
+         SetWindowText(hEditBox, L"> ");
+         dwIndex = 2;
+         SendMessage(hEditBox, EM_SETSEL, dwIndex, dwIndex);
+         return;
+    } else if (sInput == L"help") {
+         ShellExecute(NULL, L"open", L"PeaCalc.html", NULL, NULL, SW_SHOW);
+         // Just append new prompt
+         SendMessage(hEditBox, EM_SETSEL, -1, -1);
+         SendMessage(hEditBox, EM_REPLACESEL, 0, (LPARAM)L"\r\n> ");
+         return;
+    } 
+
+    // Math Processing
+    sFullOutput = vProcMath(sInput);
+    
+    // Prepare Defaults for Color
+    cfDef.dwMask = CFM_COLOR;
+    DWORD cBg, cTxt, cRes;
+    m_pConfig->vGetColors(cBg, cTxt, cRes);
+    cfDef.crTextColor = cTxt;
+
+    // Replace the LAST PARAGRAPH with the new output
+    // Use EM_SETSEL for simplicity and reliability
+    SendMessage(hEditBox, EM_SETSEL, dwLineIndex, -1);
+    
+    // Set default format for the new block
+    SendMessage(hEditBox, EM_SETCHARFORMAT, SCF_SELECTION, (LPARAM)&cfDef); 
+    // Replace
+    SendMessage(hEditBox, EM_REPLACESEL, 0, (LPARAM)sFullOutput.c_str());
+    
+    // Scroll
     SendMessage(hEditBox, EM_SCROLLCARET, 0, 0);
+    
+    // Limit lines logic
+    // Get new line count (Visual count is fine for limiting total output)
+    DWORD dwLineCount = SendMessage(hEditBox, EM_GETLINECOUNT, 0, 0);
+    if (dwLineCount > (DWORD)m_pConfig->iLines) {
+        // Delete top lines
+        DWORD dwLinesToRemove = dwLineCount - m_pConfig->iLines;
+        DWORD dwEndChar = SendMessage(hEditBox, EM_LINEINDEX, dwLinesToRemove, 0);
+        cr.cpMin = 0;
+        cr.cpMax = dwEndChar;
+        SendMessage(hEditBox, EM_EXSETSEL, 0, (LPARAM)&cr);
+        SendMessage(hEditBox, EM_REPLACESEL, 0, (LPARAM)L"");
+    }
+
+    // Apply Colors Globaly
+    vColorizeText(hEditBox);
+
+    // Store cursor
+    m_dwEditLastLF = GetWindowTextLength(hEditBox) - 2; 
 }
 
 /** Handler for a mathematical input: *************************************************/
@@ -309,5 +342,81 @@ void CCommandHandler::vRollback(WCHAR* pszwInput, WCHAR* pszwNewStart) {
         pszwNewStart++;
     }
     *pszwInput = L'\0';
+}
+
+/** Colorizes the text in the editor: *************************************************/
+
+void CCommandHandler::vColorizeText(HWND hEditBox) {
+    /** Determine Colors:                                                             */
+    DWORD cBg, cTxt, cRes;
+    m_pConfig->vGetColors(cBg, cTxt, cRes);
+
+    /** Setup Formats:                                                                */
+    CHARFORMAT2W cfDef = { sizeof(CHARFORMAT2W) };
+    cfDef.cbSize = sizeof(CHARFORMAT2W);
+    cfDef.dwMask = CFM_COLOR;
+    cfDef.crTextColor = cTxt;
+
+    CHARFORMAT2W cfRes = { sizeof(CHARFORMAT2W) };
+    cfRes.cbSize = sizeof(CHARFORMAT2W);
+    cfRes.dwMask = CFM_COLOR;
+    cfRes.crTextColor = cRes;
+
+    /** Apply Default Color to ALL text first:                                        */
+    SendMessage(hEditBox, EM_SETSEL, 0, -1);
+    SendMessage(hEditBox, EM_SETCHARFORMAT, SCF_SELECTION, (LPARAM)&cfDef);
+
+    /** Scan text and colorize results:                                               */
+    DWORD dwLen = GetWindowTextLength(hEditBox);
+    if (dwLen == 0) return;
+
+    // Use EM_GETTEXTRANGE to get exactly what RichEdit sees (no CRLF conversion issues)
+    WCHAR* pszText = new WCHAR[dwLen + 1];
+    TEXTRANGEW tr;
+    tr.chrg.cpMin = 0;
+    tr.chrg.cpMax = dwLen;
+    tr.lpstrText = pszText;
+    SendMessage(hEditBox, EM_GETTEXTRANGE, 0, (LPARAM)&tr);
+    
+    // Safety null terminate (though standard says it copies up to...)
+    // Wait, EM_GETTEXTRANGE doesn't promise NULL termination if full buffer used?
+    // It copies null usually. But let's be safe.
+    // Actually we can't be sure where it ended if it didn't copy NULL.
+    // But dwLen is length. So pszText[dwLen] = 0;
+    pszText[dwLen] = L'\0'; // Basic safety
+
+    DWORD dwPos = 0;
+    while (dwPos < dwLen) {
+        // Check if line starts with "  = "
+        // Logic: Start of buffer OR Previous char was \r or \n
+        bool bLineStart = (dwPos == 0) || (pszText[dwPos-1] == L'\r') || (pszText[dwPos-1] == L'\n');
+        
+        if (bLineStart) {
+             // Check for "  = "
+             // We need to look ahead
+             if ((dwPos + 4 <= dwLen)) {
+                  if (wcsncmp(&pszText[dwPos], L"  = ", 4) == 0) {
+                      // Found a result line!
+                      // Find end of this line
+                      DWORD dwEnd = dwPos;
+                      while (dwEnd < dwLen && pszText[dwEnd] != L'\r' && pszText[dwEnd] != L'\n') {
+                          dwEnd++;
+                      }
+                      
+                      // Apply Color
+                      SendMessage(hEditBox, EM_SETSEL, dwPos, dwEnd);
+                      SendMessage(hEditBox, EM_SETCHARFORMAT, SCF_SELECTION, (LPARAM)&cfRes);
+                      
+                      dwPos = dwEnd;
+                  }
+             }
+        }
+        dwPos++;
+    }
+    
+    delete[] pszText;
+    
+    /** Restore selection to end:                                                     */
+    SendMessage(hEditBox, EM_SETSEL, dwLen, dwLen);
 }
 

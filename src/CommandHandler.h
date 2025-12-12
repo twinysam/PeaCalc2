@@ -20,6 +20,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 /** Type Definitions: *****************************************************************/
 
 typedef union {
@@ -36,6 +38,7 @@ public:
     ~CCommandHandler();
     void            vSetInfoText(WCHAR* pszwTextPtr);
     void            vSetText(HWND hEditBox, const WCHAR* pszwNewText);
+    void            vColorizeText(HWND hEditBox);
     void            vProcEnter(HWND hMain, HWND hEditBox);
     std::wstring    vProcMath(std::wstring sInput);
     DWORD           dwFindNthLastCR(const WCHAR* pszwInput, int iCount);

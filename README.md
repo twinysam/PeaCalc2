@@ -160,6 +160,10 @@ Since there's no way yet of changing these settings out of the application itsel
 * _FontSize_: Sets the size of the font in a range between 1 and 30.
 * _Precision_: Defines the precision in digits of the numeric output of float-values. The value ranges from 1 to 16.
 * _Lines_: Defines, how many lines are stored in the history.
+* _ColorMode_: Controls the theme. 0 = Auto (System), 1 = Light, 2 = Dark.
+* _LightBg_, _LightTxt_: Hex colors (e.g., FFFFFF) for background and text in Light mode.
+* _DarkBg_, _DarkTxt_: Hex colors (e.g., 000000) for background and text in Dark mode.
+* _ResultLightColor_, _ResultDarkColor_: Hex colors for the result text.
 
 ## Developer Notes
 This project is can be built with Mingw-w64 or Visual Studio. Some compiler switches were added, to ensure support for both environments.  

@@ -24,6 +24,7 @@
 #include "ConfigHandler.h"
 #include "Term.h"
 #include "CommandHandler.h"
+#include <Richedit.h>
 
 /** Compiler Settings: ****************************************************************/
 
@@ -62,6 +63,18 @@ void vDoTabScan(bool bDir, bool bReScan);
 void vCreateInfoText (WCHAR* pszwOutput);
 void vAddVersionInfo (WCHAR* pszwOutput, const WCHAR* pszwEntry);
 
+/** Helper Functions for Colors: ******************************************************/
+
+COLORREF cBgColor, cTxtColor, cResultColor;
+HBRUSH   hBgBrush = NULL;
+
+void UpdateColorSettings() {
+    Config.vGetColors(cBgColor, cTxtColor, cResultColor);
+
+    if (hBgBrush) DeleteObject(hBgBrush);
+    hBgBrush = CreateSolidBrush(cBgColor);
+}
+
 /** Application entry function: *******************************************************/
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine, int iCmdShow) {
@@ -72,6 +85,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
     if (!Config.bIsPortable()) szAppName[7] = 0;
     /** Create the info-text and make it available to the command-handler:            */
     vCreateInfoText(pszwInfoText);
+    UpdateColorSettings(); // Initialize colors
     Command.vSetInfoText(pszwInfoText);
     /** Prepare Window-Class:                                                         */
 	wndclass.cbSize        = sizeof(WNDCLASSEX);
@@ -116,10 +130,18 @@ HWND CreateEditBox(HWND hOwner, WPARAM wParam, LPARAM lParam) {
     HWND   hWndEdit;
     HFONT  hFont;
     /** Create the edit-box-control:                                                  */
-    hWndEdit = CreateWindow(TEXT("edit"), NULL,
-        WS_CHILD | WS_VISIBLE | ES_LEFT | ES_MULTILINE | ES_AUTOHSCROLL | ES_AUTOVSCROLL,
+    static HMODULE hModRichEdit = LoadLibrary(L"Msftedit.dll");
+    /** Create the edit-box-control:                                                  */
+    hWndEdit = CreateWindow(L"RICHEDIT50W", NULL,
+        WS_CHILD | WS_VISIBLE | ES_LEFT | ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL,
         0, 0, 0, 0, hOwner, (HMENU)ID_EDIT,
         ((LPCREATESTRUCT)lParam)->hInstance, NULL);
+    /** If RichEdit 4.1+ failed, try older class or error handling? */
+    if (!hWndEdit) {
+         // Fallback or error? Assuming Msftedit.dll is present on standard Windows.
+         MessageBox(hOwner, L"Could not create RichEdit control.", L"Error", MB_OK);
+         return NULL;
+    }
     /** Overwrite its message-procedure and conserve the low-level one:               */
     lpfnEditBoxLowProc = (WNDPROC)SetWindowLongPtr(hWndEdit,GWLP_WNDPROC,(LONG_PTR)EditBoxProc );
     /** Set the font of the edit-box:                                                 */
@@ -139,6 +161,7 @@ HWND CreateEditBox(HWND hOwner, WPARAM wParam, LPARAM lParam) {
         MAKELPARAM(TRUE, 0));
     /** Set the initial text:                                                         */
     Command.vSetText(hWndEdit, Config.sText.c_str());
+    SendMessage(hWndEdit, EM_SETBKGNDCOLOR, 0, (LPARAM)cBgColor);
     /** And be done:                                                                  */
     return hWndEdit;
 }
@@ -212,6 +235,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) 
             }
         }
         break;
+    case WM_CTLCOLOREDIT:
+    case WM_CTLCOLORSTATIC:
+        SetTextColor((HDC)wParam, cTxtColor);
+        SetBkColor((HDC)wParam, cBgColor);
+        return (LRESULT)hBgBrush;
     case WM_DESTROY:
         /** Before the main-window is destroyed, store the window-properties:         */
         CloseMain(hwnd, wParam, lParam);
@@ -243,6 +271,11 @@ LRESULT CALLBACK EditBoxProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPar
             }
             return 0;
         }
+        /** Check if it was Enter:                                                    */
+        if (wParam == VK_RETURN) {
+            Command.vProcEnter(hWndMain, hwnd);
+            return 0;
+        }
         /** Check, if it was a delete:                                                */
         if (wParam == VK_DELETE) {
             /** Check if it has to be ignored:                                        */
@@ -272,11 +305,6 @@ LRESULT CALLBACK EditBoxProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPar
         }
         /** Make sure, that CTRL+C is always passed on:                               */
         if ((GetKeyState(VK_CONTROL) & 0x8000) && (wParam == 3)) break;
-        /** If it was a return, process it:                                           */
-        if (wParam == VK_RETURN) {
-            Command.vProcEnter(hWndMain, hwnd);
-            return 0;
-        }
         /** Fetch the input-position:                                                 */
         SendMessage(hwnd, EM_GETSEL, (WPARAM)&dwIndex, NULL);
         /** Check, if it is a BS to be ignored:                                       */

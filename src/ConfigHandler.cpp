@@ -41,6 +41,7 @@
 CConfigHandler::CConfigHandler() {
     WCHAR szFileName[MAX_PATH];
     /** Check portability:                                                            */
+    vSetDefaultData(); 
     vCheckPortable();
     /** Setup the file-name:                                                          */
     if (bPortable) {
@@ -144,8 +145,15 @@ bool CConfigHandler::bWriteToFile(const WCHAR* pszwFName) {
     fwprintf(fp, L"Opacity=%d\n"  , iOpacity  );
     fwprintf(fp, L"FontSize=%d\n" , iFontSize );
     fwprintf(fp, L"Precision=%d\n", iPrecision);
-    fwprintf(fp, L"Lines=%d\n"    , iLines    );
-    fwprintf(fp, L"[Text]\n"                  );
+    fwprintf(fp, L"Lines=%d\n"            , iLines           );
+    fwprintf(fp, L"ColorMode=%d\n"        , iColorMode       );
+    fwprintf(fp, L"LightBg=%ls\n"          , sLightBg.c_str() );
+    fwprintf(fp, L"LightTxt=%ls\n"         , sLightTxt.c_str());
+    fwprintf(fp, L"DarkBg=%ls\n"           , sDarkBg.c_str()  );
+    fwprintf(fp, L"DarkTxt=%ls\n"          , sDarkTxt.c_str() );
+    fwprintf(fp, L"ResultLightColor=%ls\n" , sResultLightColor.c_str());
+    fwprintf(fp, L"ResultDarkColor=%ls\n"  , sResultDarkColor.c_str());
+    fwprintf(fp, L"[Text]\n"              );
     /** Prepare the text bei removing \r:                                             */
     i = sText.find(L"\r");
     while (i != std::string::npos) {
@@ -153,9 +161,9 @@ bool CConfigHandler::bWriteToFile(const WCHAR* pszwFName) {
         i = sText.find(L"\r");
     }
     #ifdef _MSC_VER
-        fwprintf(fp, L"%s"           , sText.c_str());
+        fwprintf(fp, L"%ls"           , sText.c_str());
     #else
-        fwprintf(fp, L"%S", sText.c_str());
+        fwprintf(fp, L"%ls", sText.c_str()); // Use %ls for wide string on MinGW/Standard
     #endif
     /** And close:                                                                    */
     fclose(fp); 
@@ -170,7 +178,7 @@ INT32 CConfigHandler::iParseFileEntry(FILE *fp, const WCHAR* pszwToken, DWORD dw
     DWORD dwRdVal;
     WCHAR *epr;
     /** Try to fetch a line from the file:                                            */
-    if (fgetws(buf, sizeof(buf), fp) == NULL) return ulDefault;
+    if (fgetws(buf, 1000, fp) == NULL) return ulDefault;
     /** Check, if it contains the expected token:                                     */
     if (wcsncmp(buf, pszwToken, wcslen(pszwToken)) != 0) return ulDefault;
     /** Try to parse the numeric argument behind it:                                  */
@@ -181,6 +189,13 @@ INT32 CConfigHandler::iParseFileEntry(FILE *fp, const WCHAR* pszwToken, DWORD dw
     return (INT32)dwRdVal;
 }
 
+/** Entry-Parser for strings: *********************************************************
+ *    Tries to read and parse a string value with a given token from the ini-file:    */
+
+void CConfigHandler::vParseStringEntry(FILE *fp, const WCHAR* pszwToken, std::wstring &sTarget, const WCHAR* pszwDefault) {
+    // This function is kept for structural consistency but checking code shows it is unused now.
+}
+
 /** File-Reader: **********************************************************************
  *    Open the source-file and uses the parser above to fetch the configuration-      *
  *    values one by one:                                                              */
@@ -188,36 +203,57 @@ INT32 CConfigHandler::iParseFileEntry(FILE *fp, const WCHAR* pszwToken, DWORD dw
 bool CConfigHandler::bReadFromFile(const WCHAR* pszwFName) {
     FILE *fp;
     WCHAR buf[1000];
-    /** Try to open the file:                                                         */
+    WCHAR *endptr;
+    
     fp = _wfopen(pszwFName, L"r, ccs=UTF-8");
     if (fp == NULL) return false;
-    /** Fetch the first line, and check if it is the expected header:                 */
-    if (fgetws(buf, sizeof(buf), fp) == NULL) return false;
-    if (wcsncmp(buf, L"[PeaCalc]", 9) != 0) return false;
-    /** Use the parser to fetch and check the configuration-items:                    */
-    iTop      = iParseFileEntry(fp, L"Top="      , CNF_MAX_TOP      , CNF_DEF_TOP      );
-    iLeft     = iParseFileEntry(fp, L"Left="     , CNF_MAX_LEFT     , CNF_DEF_LEFT     );
-    iHeight   = iParseFileEntry(fp, L"Height="   , CNF_MAX_HEIGHT   , CNF_DEF_HEIGHT   );
-    iWidth    = iParseFileEntry(fp, L"Width="    , CNF_MAX_WIDTH    , CNF_DEF_WIDTH    );
-    iOpacity  = iParseFileEntry(fp, L"Opacity="  , CNF_MAX_OPACITY  , CNF_DEF_OPACITY  );
-    iFontSize = iParseFileEntry(fp, L"FontSize=" , CNF_MAX_FONTSIZE , CNF_DEF_FONTSIZE );
-    iPrecision= iParseFileEntry(fp, L"Precision=", CNF_MAX_PRECISION, CNF_MAX_PRECISION);
-    iLines    = iParseFileEntry(fp, L"Lines="    , CNF_MAX_LINES    , CNF_DEF_LINES    );
+    
+    // Header
+    if (fgetws(buf, 1000, fp) == NULL) { fclose(fp); return false; }
+    if (wcsncmp(buf, L"[PeaCalc]", 9) != 0) { fclose(fp); return false; }
+
+    // Read configuration lines
+    bool bTextSection = false;
+    while (fgetws(buf, 1000, fp) != NULL) {
+        // Strip newline
+        size_t len = wcslen(buf);
+        while(len > 0 && (buf[len-1] == L'\r' || buf[len-1] == L'\n')) buf[--len] = 0;
+        
+        if (wcsncmp(buf, L"[Text]", 6) == 0) {
+            bTextSection = true;
+            break;
+        }
+
+        if (wcsncmp(buf, L"Top=", 4) == 0) iTop = wcstol(buf + 4, NULL, 10);
+        else if (wcsncmp(buf, L"Left=", 5) == 0) iLeft = wcstol(buf + 5, NULL, 10);
+        else if (wcsncmp(buf, L"Height=", 7) == 0) iHeight = wcstol(buf + 7, NULL, 10);
+        else if (wcsncmp(buf, L"Width=", 6) == 0) iWidth = wcstol(buf + 6, NULL, 10);
+        else if (wcsncmp(buf, L"Opacity=", 8) == 0) iOpacity = wcstol(buf + 8, NULL, 10);
+        else if (wcsncmp(buf, L"FontSize=", 9) == 0) iFontSize = wcstol(buf + 9, NULL, 10);
+        else if (wcsncmp(buf, L"Precision=", 10) == 0) iPrecision = wcstol(buf + 10, NULL, 10);
+        else if (wcsncmp(buf, L"Lines=", 6) == 0) iLines = wcstol(buf + 6, NULL, 10);
+        else if (wcsncmp(buf, L"ColorMode=", 10) == 0) iColorMode = wcstol(buf + 10, NULL, 10);
+        else if (wcsncmp(buf, L"LightBg=", 8) == 0) sLightBg = buf + 8;
+        else if (wcsncmp(buf, L"LightTxt=", 9) == 0) sLightTxt = buf + 9;
+        else if (wcsncmp(buf, L"DarkBg=", 7) == 0) sDarkBg = buf + 7;
+        else if (wcsncmp(buf, L"DarkTxt=", 8) == 0) sDarkTxt = buf + 8;
+        else if (wcsncmp(buf, L"ResultLightColor=", 17) == 0) sResultLightColor = buf + 17;
+        else if (wcsncmp(buf, L"ResultDarkColor=", 16) == 0) sResultDarkColor = buf + 16;
+    }
+
     if ((iLines & 1)==0) iLines++;
-    /** Check the text-header:                                                        */
-    if (fgetws(buf, sizeof(buf), fp) == NULL) return false;
-    if (wcsncmp(buf, L"[Text]", 6) != 0) return false;
-    /** And read the text line by line:                                               */
-    sText = L"";
-    while (fgetws(buf, sizeof(buf), fp) != NULL) {
-        sText = sText + std::wstring(buf);
-        /** Make sure to replace any pure\n by \r\n for windows:                      */
-        if (sText.back() == L'\n') {
-            sText.back() = L'\r';
-            sText += L"\n";
+
+    if (bTextSection) {
+        sText = L"";
+        while (fgetws(buf, 1000, fp) != NULL) {
+            sText += buf;
+            if (sText.back() == L'\n' && (sText.length() < 2 || sText[sText.length()-2] != L'\r')) {
+                 sText.back() = L'\r';
+                 sText += L"\n";
+            }
         }
     }
-    /** And close the file:                                                           */
+
     fclose(fp);
     return true;
 }
@@ -234,5 +270,84 @@ void CConfigHandler::vSetDefaultData(void) {
     iPrecision = CNF_DEF_PRECISION;
     iFontSize  = CNF_DEF_FONTSIZE;
     iLines     = CNF_DEF_LINES;
-    sText[0]   = L'\0';
+    sText      = L"";
+    
+    iColorMode = CNF_DEF_COLORMODE;
+    sLightBg   = L"FFFFFF";
+    sLightTxt  = L"000000";
+    sDarkBg    = L"000000";
+    sDarkTxt   = L"FFFFFF";
+    sResultLightColor = L"00008B"; // DarkBlue
+    sResultDarkColor  = L"00BFFF"; // DeepSkyBlue
+}
+
+/** Color Getter: *********************************************************************/
+
+void CConfigHandler::vGetColors(DWORD &cBg, DWORD &cTxt, DWORD &cRes) {
+    bool bDark = false;
+    
+    if (iColorMode == 2) {
+        bDark = true;
+    } else if (iColorMode == 0) {
+        bDark = bIsSystemDarkMode();
+    }
+    
+    // Default Colors
+    DWORD defBg = bDark ? RGB(0, 0, 0) : RGB(255, 255, 255);
+    DWORD defTxt = bDark ? RGB(255, 255, 255) : RGB(0, 0, 0);
+    DWORD defRes = bDark ? RGB(0, 191, 255) : RGB(0, 0, 139); // DeepSkyBlue vs DarkBlue
+
+    if (bDark) {
+        cBg = dwHexToRGB(sDarkBg, defBg);
+        cTxt = dwHexToRGB(sDarkTxt, defTxt);
+        cRes = dwHexToRGB(sResultDarkColor, defRes);
+    } else {
+        cBg = dwHexToRGB(sLightBg, defBg);
+        cTxt = dwHexToRGB(sLightTxt, defTxt);
+        cRes = dwHexToRGB(sResultLightColor, defRes);
+    }
+}
+
+/** Helper to parse Hex-String to RGB: ************************************************/
+
+DWORD CConfigHandler::dwHexToRGB(std::wstring sHex, DWORD cDefault) {
+    if (sHex.empty()) return cDefault;
+    try {
+        unsigned long ulVal = std::stoul(sHex, nullptr, 16);
+        return RGB((ulVal >> 16) & 0xFF, (ulVal >> 8) & 0xFF, ulVal & 0xFF);
+    } catch (...) {
+        return cDefault;
+    }
+}
+
+/** Helper to check system dark mode: *************************************************/
+
+bool CConfigHandler::bIsSystemDarkMode(void) {
+    HKEY hKey;
+    DWORD dwValue = 0;
+    DWORD dwSize = sizeof(dwValue);
+    bool bAppsLight = true;
+    bool bSystemLight = true;
+    bool bFoundApps = false;
+
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+        if (RegQueryValueExW(hKey, L"AppsUseLightTheme", NULL, NULL, (LPBYTE)&dwValue, &dwSize) == ERROR_SUCCESS) {
+            bAppsLight = (dwValue != 0);
+            bFoundApps = true;
+        }
+        dwSize = sizeof(dwValue);
+        if (RegQueryValueExW(hKey, L"SystemUsesLightTheme", NULL, NULL, (LPBYTE)&dwValue, &dwSize) == ERROR_SUCCESS) {
+            bSystemLight = (dwValue != 0);
+        }
+        RegCloseKey(hKey);
+    }
+    
+    // If we found the app setting, strictly use that.
+    // However, if the user complains, maybe we should respect "System" if "Apps" is Light but System is Dark?
+    // Usually AppsUseLightTheme covers apps.
+    // But let's check: if AppsUseLightTheme is missing, use System.
+    if (bFoundApps) return !bAppsLight;
+    
+    // Fallback validity check: if System is dark, assume dark.
+    return !bSystemLight;
 }

@@ -36,7 +36,10 @@
 #define CNF_DEF_OPACITY   90
 #define CNF_DEF_PRECISION 5
 #define CNF_DEF_LINES     44
-#define CNF_DEF_FONTSIZE  18
+#define CNF_DEF_FONTSIZE  25
+#define CNF_DEF_COLORMODE 0
+
+#define CNF_MAX_COLORMODE 2
 
 #define C_TEXTBUFSIZE 10000
 
@@ -45,17 +48,21 @@
 class CConfigHandler {
 public:
     // Properties:
-    INT32        iTop, iLeft, iHeight, iWidth, iOpacity, iPrecision, iLines, iFontSize;
-    std::wstring sText;
+    INT32        iTop, iLeft, iHeight, iWidth, iOpacity, iPrecision, iLines, iFontSize, iColorMode;
+    std::wstring sText, sLightBg, sLightTxt, sDarkBg, sDarkTxt, sResultLightColor, sResultDarkColor;
     // Methods:
     CConfigHandler();
     ~CConfigHandler();
     bool   bIsPortable(void);
+    void   vGetColors(DWORD &cBg, DWORD &cTxt, DWORD &cRes);
 private:
     bool  bPortable;
     void  vCheckPortable(void);
     bool  bWriteToFile(const WCHAR* pszwFName);
     INT32 iParseFileEntry(FILE *fp, const WCHAR* pszwToken, DWORD dwLim, INT32 ulDefault);
+    void  vParseStringEntry(FILE *fp, const WCHAR* pszwToken, std::wstring &sTarget, const WCHAR* pszwDefault);
     bool  bReadFromFile(const WCHAR* pszwFName);
     void  vSetDefaultData(void);
+    DWORD dwHexToRGB(std::wstring sHex, DWORD cDefault);
+    bool  bIsSystemDarkMode(void);
 };

@@ -13,7 +13,7 @@ echo. Expecting MinGw in %MINGWPATH%...
 echo.
 
 rem * Build manual:
-del ..\build\PeaCalc.html
+if exist ..\build\PeaCalc.html del ..\build\PeaCalc.html
 echo ^<meta http-equiv="Content-Type" content="text/html; charset=utf-8" /^>                         >  ..\build\PeaCalc.html
 echo ^<style title="BodyText" type="text/css"^>                                                     >>  ..\build\PeaCalc.html
 echo  body { font-family: Segoe UI,Helvetica,sans-serif; font-weight: normal; padding-left: 20px; } >>  ..\build\PeaCalc.html
@@ -28,7 +28,7 @@ copy   ..\LICENSE     ..\build\LICENSE.txt /Y
 
 rem * ... and build:
 windres PeaCalc.rc -O coff -o PeaCalc.res
-g++ -O3 -s -o ..\build\PeaCalc.exe -mwindows -static-libgcc -static-libstdc++ PeaCalc.cpp ConfigHandler.cpp CommandHandler.cpp Term.cpp PeaCalc.res -lversion
+g++ -O3 -s -o ..\build\PeaCalc.exe -mwindows -static PeaCalc.cpp ConfigHandler.cpp CommandHandler.cpp Term.cpp PeaCalc.res -lversion -ladvapi32
 del *.res
 
 pause
