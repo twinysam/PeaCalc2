@@ -64,11 +64,11 @@ void CCommandHandler::vSetText(HWND hEditBox, const WCHAR* pszwNewText) {
         wcscpy(buffer, m_pszwInfoText);
     }
     SetWindowText(hEditBox, buffer);
-    /** Store the new starting-location:                                              */
-    m_dwEditLastLF = dwFindNthLastCR(buffer, 1);
     /** Set the selection at its end:                                                 */
-    dwIndex = wcslen(buffer);
+    dwIndex = GetWindowTextLength(hEditBox);
     SendMessage(hEditBox, EM_SETSEL, dwIndex, dwIndex);
+    /** Store the new starting-location:                                              */
+    m_dwEditLastLF = SendMessage(hEditBox, EM_LINEINDEX, -1, 0);
     /** Apply colors:                                                                 */
     vColorizeText(hEditBox);
 }
@@ -133,7 +133,8 @@ void CCommandHandler::vProcEnter(HWND hMain, HWND hEditBox) {
          // Just append new prompt
          SendMessage(hEditBox, EM_SETSEL, -1, -1);
          SendMessage(hEditBox, EM_REPLACESEL, 0, (LPARAM)L"\r\n> ");
-         m_dwEditLastLF = GetWindowTextLength(hEditBox) - 2;
+         SendMessage(hEditBox, EM_SETSEL, -1, -1); // Move to absolute end
+         m_dwEditLastLF = SendMessage(hEditBox, EM_LINEINDEX, -1, 0);
          return;
     } 
 
@@ -175,7 +176,7 @@ void CCommandHandler::vProcEnter(HWND hMain, HWND hEditBox) {
     vColorizeText(hEditBox);
 
     // Store cursor
-    m_dwEditLastLF = GetWindowTextLength(hEditBox) - 2;
+    m_dwEditLastLF = SendMessage(hEditBox, EM_LINEINDEX, -1, 0);
 }
 
 /** Handler for a mathematical input: *************************************************/

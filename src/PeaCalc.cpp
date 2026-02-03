@@ -276,6 +276,12 @@ LRESULT CALLBACK EditBoxProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPar
             Command.vProcEnter(hWndMain, hwnd);
             return 0;
         }
+        if (wParam == VK_BACK) {
+            SendMessage(hwnd, EM_GETSEL, (WPARAM)&dwIndex, NULL);
+            // Internal index is start of line ('>'), so input info starts at +2.
+            // Block backspace if it would delete the space at index 1 or '>' at index 0.
+            if (dwIndex < (Command.m_dwEditLastLF + 3)) return 0;
+        }
         /** Check, if it was a delete:                                                */
         if (wParam == VK_DELETE) {
             /** Check if it has to be ignored:                                        */
@@ -307,10 +313,6 @@ LRESULT CALLBACK EditBoxProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPar
         if ((GetKeyState(VK_CONTROL) & 0x8000) && (wParam == 3)) break;
         /** Fetch the input-position:                                                 */
         SendMessage(hwnd, EM_GETSEL, (WPARAM)&dwIndex, NULL);
-        /** Check, if it is a BS to be ignored:                                       */
-        if ((dwIndex < (Command.m_dwEditLastLF + 3)) && (wParam == L'\b')) {
-            return 0;
-        }
         /** Check, if something was entered before the allowed start-position:        */
         if (dwIndex < (Command.m_dwEditLastLF + 2)) {
             if (dwIndex > Command.m_dwEditLastLF) {
@@ -364,8 +366,9 @@ void vDoTabScan(bool bDir, bool bReScan) {
         /** It has to, so fetch the text and prepare the scan:                        */
         GetWindowText(hWndEdit, szwBoxText, sizeof(szwBoxText));
         /** Create the scan-string:                                                   */
+        dwIndex = Command.dwFindNthLastCR(szwBoxText, 1);
         wcscpy(szwScanText, L"  ");
-        wcscat(szwScanText, &szwBoxText[Command.m_dwEditLastLF + 2]);
+        wcscat(szwScanText, &szwBoxText[dwIndex + 2]);
         /** ... and init the numbers:                                                 */
         dwScanLen = wcslen(szwScanText);
         dwSafeLine = 1;
@@ -417,7 +420,8 @@ void vDoTabScan(bool bDir, bool bReScan) {
         while (buffer[dwIndex] != L'\r') dwIndex++;
         buffer[dwIndex] = 0;
         /** Copy it INTO the box-text:                                                */
-        wcscpy(&szwBoxText[Command.m_dwEditLastLF + 2], &buffer[2]);
+        dwIndex = Command.dwFindNthLastCR(szwBoxText, 1);
+        wcscpy(&szwBoxText[dwIndex + 2], &buffer[2]);
         SetWindowText(hWndEdit, szwBoxText);
         /** Set the selection after the last character:                               */
         SendMessage(hWndEdit, EM_SETSEL, wcslen(szwBoxText), wcslen(szwBoxText));
