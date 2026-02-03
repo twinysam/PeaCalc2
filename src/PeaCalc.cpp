@@ -280,7 +280,7 @@ LRESULT CALLBACK EditBoxProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPar
         if (wParam == VK_DELETE) {
             /** Check if it has to be ignored:                                        */
             SendMessage(hwnd, EM_GETSEL, (WPARAM)&dwIndex, NULL);
-            if (dwIndex < (Command.m_dwEditLastLF + 3)) return 0;
+            if (dwIndex < (Command.m_dwEditLastLF + 2)) return 0;
             /** It is not, thus make sure that scanning is inactive:                  */
         }
         /** Check, if it was a home-key:                                              */
@@ -289,7 +289,7 @@ LRESULT CALLBACK EditBoxProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPar
             SendMessage(hwnd, EM_GETSEL, (WPARAM)&dwIndex, NULL);
             if (dwIndex > (Command.m_dwEditLastLF)) {
                 /** If so, set the selection the starting entry-position:             */
-                dwIndex = Command.m_dwEditLastLF + 3;
+                dwIndex = Command.m_dwEditLastLF + 2;
                 SendMessage(hwnd, EM_SETSEL, dwIndex, dwIndex);
                 return 0;
             }
@@ -308,13 +308,13 @@ LRESULT CALLBACK EditBoxProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPar
         /** Fetch the input-position:                                                 */
         SendMessage(hwnd, EM_GETSEL, (WPARAM)&dwIndex, NULL);
         /** Check, if it is a BS to be ignored:                                       */
-        if ((dwIndex < (Command.m_dwEditLastLF + 4)) && (wParam == L'\b')) {
+        if ((dwIndex < (Command.m_dwEditLastLF + 3)) && (wParam == L'\b')) {
             return 0;
         }
         /** Check, if something was entered before the allowed start-position:        */
-        if (dwIndex < (Command.m_dwEditLastLF + 3)) {
+        if (dwIndex < (Command.m_dwEditLastLF + 2)) {
             if (dwIndex > Command.m_dwEditLastLF) {
-                dwIndex = Command.m_dwEditLastLF + 3;
+                dwIndex = Command.m_dwEditLastLF + 2;
             }else{
                 dwIndex = GetWindowTextLength(hwnd);
             }
@@ -365,7 +365,7 @@ void vDoTabScan(bool bDir, bool bReScan) {
         GetWindowText(hWndEdit, szwBoxText, sizeof(szwBoxText));
         /** Create the scan-string:                                                   */
         wcscpy(szwScanText, L"  ");
-        wcscat(szwScanText, &szwBoxText[Command.m_dwEditLastLF + 3]);
+        wcscat(szwScanText, &szwBoxText[Command.m_dwEditLastLF + 2]);
         /** ... and init the numbers:                                                 */
         dwScanLen = wcslen(szwScanText);
         dwSafeLine = 1;
@@ -417,7 +417,7 @@ void vDoTabScan(bool bDir, bool bReScan) {
         while (buffer[dwIndex] != L'\r') dwIndex++;
         buffer[dwIndex] = 0;
         /** Copy it INTO the box-text:                                                */
-        wcscpy(&szwBoxText[Command.m_dwEditLastLF + 3], &buffer[2]);
+        wcscpy(&szwBoxText[Command.m_dwEditLastLF + 2], &buffer[2]);
         SetWindowText(hWndEdit, szwBoxText);
         /** Set the selection after the last character:                               */
         SendMessage(hWndEdit, EM_SETSEL, wcslen(szwBoxText), wcslen(szwBoxText));

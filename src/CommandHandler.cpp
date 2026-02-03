@@ -124,6 +124,7 @@ void CCommandHandler::vProcEnter(HWND hMain, HWND hEditBox) {
          return;
     } else if (sInput == L"clear") {
          SetWindowText(hEditBox, L"> ");
+         m_dwEditLastLF = 0;
          dwIndex = 2;
          SendMessage(hEditBox, EM_SETSEL, dwIndex, dwIndex);
          return;
@@ -132,6 +133,7 @@ void CCommandHandler::vProcEnter(HWND hMain, HWND hEditBox) {
          // Just append new prompt
          SendMessage(hEditBox, EM_SETSEL, -1, -1);
          SendMessage(hEditBox, EM_REPLACESEL, 0, (LPARAM)L"\r\n> ");
+         m_dwEditLastLF = GetWindowTextLength(hEditBox) - 2;
          return;
     } 
 
@@ -173,7 +175,7 @@ void CCommandHandler::vProcEnter(HWND hMain, HWND hEditBox) {
     vColorizeText(hEditBox);
 
     // Store cursor
-    m_dwEditLastLF = GetWindowTextLength(hEditBox) - 2; 
+    m_dwEditLastLF = GetWindowTextLength(hEditBox) - 2;
 }
 
 /** Handler for a mathematical input: *************************************************/
