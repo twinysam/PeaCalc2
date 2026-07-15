@@ -1,6 +1,7 @@
 //
 //  This file is part of PeaCalc++ project
 //  Copyright (C)2018 Jens Daniel Schlachter <osw.schlachter@mailbox.org>
+//  Modified/Forked by twinysam (2026) under GPL v3.0
 //
 //  This program is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU General Public License as published by
@@ -64,11 +65,11 @@ void CCommandHandler::vSetText(HWND hEditBox, const WCHAR* pszwNewText) {
         wcscpy(buffer, m_pszwInfoText);
     }
     SetWindowText(hEditBox, buffer);
-    /** Set the selection at its end:                                                 */
-    dwIndex = GetWindowTextLength(hEditBox);
-    SendMessage(hEditBox, EM_SETSEL, dwIndex, dwIndex);
-    /** Store the new starting-location:                                              */
+    /** Set the selection at its end:                                                   */
+    SendMessage(hEditBox, EM_SETSEL, -1, -1);
+    /** Store the new starting-location using RichEdit index:                           */
     m_dwEditLastLF = SendMessage(hEditBox, EM_LINEINDEX, -1, 0);
+    
     /** Apply colors:                                                                 */
     vColorizeText(hEditBox);
 }
@@ -93,7 +94,7 @@ void CCommandHandler::vProcEnter(HWND hMain, HWND hEditBox) {
     // Get text from this line only?
     // Get everything from dwLineIndex to end
     dwIndex = dwTextLen - dwLineIndex;
-    if (dwIndex <= 2) return; // Only prompt or empty
+    if (dwIndex <= 3) return; // Only prompt or empty
     
     WCHAR* pszBuff = new WCHAR[dwIndex + 1];
     TEXTRANGEW tr;
@@ -125,18 +126,26 @@ void CCommandHandler::vProcEnter(HWND hMain, HWND hEditBox) {
     } else if (sInput == L"clear") {
          SetWindowText(hEditBox, L"> ");
          m_dwEditLastLF = 0;
-         dwIndex = 2;
+         dwIndex = 2; // Length of "> "
          SendMessage(hEditBox, EM_SETSEL, dwIndex, dwIndex);
          return;
     } else if (sInput == L"help") {
          ShellExecute(NULL, L"open", L"PeaCalc.html", NULL, NULL, SW_SHOW);
          // Just append new prompt
          SendMessage(hEditBox, EM_SETSEL, -1, -1);
-         SendMessage(hEditBox, EM_REPLACESEL, 0, (LPARAM)L"\r\n> ");
-         SendMessage(hEditBox, EM_SETSEL, -1, -1); // Move to absolute end
+          SendMessage(hEditBox, EM_REPLACESEL, 0, (LPARAM)L"\r\n> ");
+          SendMessage(hEditBox, EM_SETSEL, -1, -1);
+          m_dwEditLastLF = SendMessage(hEditBox, EM_LINEINDEX, -1, 0);
+         return;
+    } else if (sInput == L"info") {
+         // Just append the info text
+         SendMessage(hEditBox, EM_SETSEL, -1, -1);
+         SendMessage(hEditBox, EM_REPLACESEL, 0, (LPARAM)L"\r\n");
+         SendMessage(hEditBox, EM_REPLACESEL, 0, (LPARAM)m_pszwInfoText);
+         SendMessage(hEditBox, EM_SETSEL, -1, -1);
          m_dwEditLastLF = SendMessage(hEditBox, EM_LINEINDEX, -1, 0);
          return;
-    } 
+    }
 
     // Math Processing
     sFullOutput = vProcMath(sInput);
@@ -175,7 +184,8 @@ void CCommandHandler::vProcEnter(HWND hMain, HWND hEditBox) {
     // Apply Colors Globaly
     vColorizeText(hEditBox);
 
-    // Store cursor
+    // Store cursor position - use EM_LINEINDEX to get RichEdit's internal index
+    SendMessage(hEditBox, EM_SETSEL, -1, -1);
     m_dwEditLastLF = SendMessage(hEditBox, EM_LINEINDEX, -1, 0);
 }
 
@@ -189,16 +199,16 @@ std::wstring CCommandHandler::vProcMath(std::wstring sInput) {
     double       dOutput;
     INT32        s32Result;
     /** Save the input in the output-string:                                          */
-    sOutput = L"  " + sInput + L"\r\n";
+    sOutput = L"> " + sInput + L"\r\n";
     /** Change the input to lower-case:                                               */
     std::transform(sInput.begin(), sInput.end(), sInput.begin(), ::tolower);
     /** Check for output-formatting:                                                  */
     if (sInput.substr(0,4) == L"hex(") {
         /** It shall be hexadecimal:                                                  */
-        sInput = sInput.substr(3);
+        sInput = sInput.substr(4); // substr(4) for "hex("
         bOutputHex = true;
     }else if (sInput.substr(0, 4) == L"bin(") {
-        sInput = sInput.substr(3);
+        sInput = sInput.substr(4);
         bOutputBin = true;
     }
     /** Try to parse it:                                                              */

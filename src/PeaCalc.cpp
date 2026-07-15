@@ -1,6 +1,7 @@
-﻿//
+//
 //  This file is part of PeaCalc++ project
 //  Copyright (C)2018 Jens Daniel Schlachter <osw.schlachter@mailbox.org>
+//  Modified/Forked by twinysam (2026) under GPL v3.0 (https://github.com/twinysam/PeaCalc2)
 //
 //  This program is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU General Public License as published by
@@ -48,7 +49,7 @@
 
 HWND            hWndMain;
 HWND            hWndEdit;
-WCHAR           szAppName[]    = TEXT("PeaCalc Portable");
+WCHAR           szAppName[]    = TEXT("PeaCalc2 Portable");
 const WCHAR     cszwHelpText[] = TEXT("  * This program comes with ABSOLUTELY NO WARRANTY.\r\n  * It is free software; you can redistribute it and/or modify it\r\n  * under the terms of the GNU General Public License version 3,\r\n  * or (at your option) any later version; type 'license' for details.\r\n  * Type 'info' for this notification.\r\n  * Type 'help' for the user-manual.\r\n> ");
 WCHAR           pszwInfoText[C_TEXTBUFSIZE];
 WNDPROC         lpfnEditBoxLowProc;
@@ -61,7 +62,7 @@ LRESULT CALLBACK WndProc        (HWND, UINT, WPARAM, LPARAM);
 LRESULT CALLBACK EditBoxProc    (HWND, UINT, WPARAM, LPARAM);
 void vDoTabScan(bool bDir, bool bReScan);
 void vCreateInfoText (WCHAR* pszwOutput);
-void vAddVersionInfo (WCHAR* pszwOutput, const WCHAR* pszwEntry);
+bool vAddVersionInfo(WCHAR* pszwOutput, const WCHAR* pszwEntry);
 
 /** Helper Functions for Colors: ******************************************************/
 
@@ -73,6 +74,22 @@ void UpdateColorSettings() {
 
     if (hBgBrush) DeleteObject(hBgBrush);
     hBgBrush = CreateSolidBrush(cBgColor);
+}
+
+typedef HRESULT(WINAPI* fnDwmSetWindowAttribute)(HWND, DWORD, LPCVOID, DWORD);
+
+void SetWindowDarkTheme(HWND hwnd, BOOL bDark) {
+    HMODULE hDwm = LoadLibrary(L"dwmapi.dll");
+    if (hDwm) {
+        fnDwmSetWindowAttribute pfn = (fnDwmSetWindowAttribute)GetProcAddress(hDwm, "DwmSetWindowAttribute");
+        if (pfn) {
+            BOOL bUseDark = bDark;
+            pfn(hwnd, 20, &bUseDark, sizeof(bUseDark));
+            pfn(hwnd, 19, &bUseDark, sizeof(bUseDark));
+            SetWindowPos(hwnd, NULL, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+        }
+        FreeLibrary(hDwm);
+    }
 }
 
 /** Application entry function: *******************************************************/
@@ -105,14 +122,24 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
         MessageBox(NULL, TEXT("This program requires at least Windows 2K!"), szAppName, MB_ICONERROR);
         return 0;
     }
-    /** Create the window-handler:                                                    */
+    DWORD dwExStyle = WS_EX_TOPMOST | WS_EX_APPWINDOW;
+    DWORD dwStyle = WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_SIZEBOX | WS_MINIMIZEBOX;
+    if (Config.iDefaultUI == 0) {
+        dwExStyle |= WS_EX_TOOLWINDOW;
+    } else {
+        dwStyle |= WS_MAXIMIZEBOX;
+    }
     hWndMain = CreateWindowEx(
-        WS_EX_TOPMOST | WS_EX_APPWINDOW | WS_EX_TOOLWINDOW,
+        dwExStyle,
         szAppName,
         szAppName,
-        WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_SIZEBOX | WS_MINIMIZEBOX,
+        dwStyle,
         Config.iLeft, Config.iTop, Config.iWidth, Config.iHeight,
         NULL, NULL, hInstance, NULL);
+    /** Set dark/light title bar theme:                                               */
+    if (Config.iDefaultUI) {
+        SetWindowDarkTheme(hWndMain, Config.bIsDarkTheme());
+    }
     /** And show it:                                                                  */
     ShowWindow(hWndMain, iCmdShow);
     UpdateWindow(hWndMain);
@@ -145,6 +172,7 @@ HWND CreateEditBox(HWND hOwner, WPARAM wParam, LPARAM lParam) {
     /** Overwrite its message-procedure and conserve the low-level one:               */
     lpfnEditBoxLowProc = (WNDPROC)SetWindowLongPtr(hWndEdit,GWLP_WNDPROC,(LONG_PTR)EditBoxProc );
     /** Set the font of the edit-box:                                                 */
+    /** Set the font of the edit-box:                                                 */
     hFont = CreateFont(Config.iFontSize, 0, 0, 0,
         FW_DONTCARE,                  // nWeight
         FALSE,                        // bItalic
@@ -159,6 +187,7 @@ HWND CreateEditBox(HWND hOwner, WPARAM wParam, LPARAM lParam) {
         WM_SETFONT,                   // Message to change the font
         (WPARAM)hFont,                // handle of the font
         MAKELPARAM(TRUE, 0));
+
     /** Set the initial text:                                                         */
     Command.vSetText(hWndEdit, Config.sText.c_str());
     SendMessage(hWndEdit, EM_SETBKGNDCOLOR, 0, (LPARAM)cBgColor);
@@ -235,6 +264,15 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) 
             }
         }
         break;
+    case WM_SETTINGCHANGE:
+        UpdateColorSettings();
+        if (Config.iDefaultUI) {
+            SetWindowDarkTheme(hwnd, Config.bIsDarkTheme());
+        }
+        SendMessage(hWndEdit, EM_SETBKGNDCOLOR, 0, (LPARAM)cBgColor);
+        Command.vColorizeText(hWndEdit);
+        InvalidateRect(hwnd, NULL, TRUE);
+        break;
     case WM_CTLCOLOREDIT:
     case WM_CTLCOLORSTATIC:
         SetTextColor((HDC)wParam, cTxtColor);
@@ -277,16 +315,23 @@ LRESULT CALLBACK EditBoxProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPar
             return 0;
         }
         if (wParam == VK_BACK) {
-            SendMessage(hwnd, EM_GETSEL, (WPARAM)&dwIndex, NULL);
-            // Internal index is start of line ('>'), so input info starts at +2.
-            // Block backspace if it would delete the space at index 1 or '>' at index 0.
-            if (dwIndex < (Command.m_dwEditLastLF + 3)) return 0;
+            DWORD dwEnd;
+            SendMessage(hwnd, EM_GETSEL, (WPARAM)&dwIndex, (LPARAM)&dwEnd);
+            /** Block backspace if it would delete the prompt characters '> ':        */
+            if (dwIndex == dwEnd) {
+                /** No selection: block if cursor is at or before first user position:*/
+                if (dwIndex <= (Command.m_dwEditLastLF + 2)) return 0;
+            } else {
+                /** Selection: block if selection starts at or before prompt:         */
+                if (dwIndex <= (Command.m_dwEditLastLF + 1)) return 0;
+            }
         }
         /** Check, if it was a delete:                                                */
         if (wParam == VK_DELETE) {
-            /** Check if it has to be ignored:                                        */
-            SendMessage(hwnd, EM_GETSEL, (WPARAM)&dwIndex, NULL);
-            if (dwIndex < (Command.m_dwEditLastLF + 2)) return 0;
+            DWORD dwEnd;
+            SendMessage(hwnd, EM_GETSEL, (WPARAM)&dwIndex, (LPARAM)&dwEnd);
+            /** Block DELETE if it would affect the prompt characters:                */
+            if (dwIndex <= (Command.m_dwEditLastLF + 1)) return 0;
             /** It is not, thus make sure that scanning is inactive:                  */
         }
         /** Check, if it was a home-key:                                              */
@@ -314,9 +359,9 @@ LRESULT CALLBACK EditBoxProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPar
         /** Fetch the input-position:                                                 */
         SendMessage(hwnd, EM_GETSEL, (WPARAM)&dwIndex, NULL);
         /** Check, if something was entered before the allowed start-position:        */
-        if (dwIndex < (Command.m_dwEditLastLF + 2)) {
+        if (dwIndex < (Command.m_dwEditLastLF + 3)) {
             if (dwIndex > Command.m_dwEditLastLF) {
-                dwIndex = Command.m_dwEditLastLF + 2;
+                dwIndex = Command.m_dwEditLastLF + 3;
             }else{
                 dwIndex = GetWindowTextLength(hwnd);
             }
@@ -365,10 +410,24 @@ void vDoTabScan(bool bDir, bool bReScan) {
     if (bReScan) {
         /** It has to, so fetch the text and prepare the scan:                        */
         GetWindowText(hWndEdit, szwBoxText, sizeof(szwBoxText));
-        /** Create the scan-string:                                                   */
-        dwIndex = Command.dwFindNthLastCR(szwBoxText, 1);
-        wcscpy(szwScanText, L"  ");
-        wcscat(szwScanText, &szwBoxText[dwIndex + 2]);
+        /** Create the scan-string from the ACTUAL terminal text:                      */
+        SendMessage(hWndEdit, EM_SETSEL, -1, -1);
+        dwIndex = SendMessage(hWndEdit, EM_LINEINDEX, -1, 0);
+        wcscpy(szwScanText, L"");
+        // We get the line text directly from the RichEdit if possible, 
+        // but for now we'll stick to szwBoxText but use the CORRECT index.
+        // Get line text:
+        int iLineLen = (int)SendMessage(hWndEdit, EM_LINELENGTH, dwIndex, 0);
+        if (iLineLen > 2) {
+            // Buffer line text
+            WCHAR* pLine = new WCHAR[iLineLen + 1];
+            *( (WORD*) pLine ) = iLineLen;
+            SendMessage(hWndEdit, EM_GETLINE, (WPARAM) (SendMessage(hWndEdit, EM_LINEFROMCHAR, dwIndex, 0)), (LPARAM) pLine);
+            pLine[iLineLen] = 0;
+            // Copy the whole line including '>'
+            wcscpy(szwScanText, pLine);
+            delete[] pLine;
+        }
         /** ... and init the numbers:                                                 */
         dwScanLen = wcslen(szwScanText);
         dwSafeLine = 1;
@@ -419,12 +478,20 @@ void vDoTabScan(bool bDir, bool bReScan) {
         dwIndex = 0;
         while (buffer[dwIndex] != L'\r') dwIndex++;
         buffer[dwIndex] = 0;
-        /** Copy it INTO the box-text:                                                */
-        dwIndex = Command.dwFindNthLastCR(szwBoxText, 1);
-        wcscpy(&szwBoxText[dwIndex + 2], &buffer[2]);
-        SetWindowText(hWndEdit, szwBoxText);
-        /** Set the selection after the last character:                               */
-        SendMessage(hWndEdit, EM_SETSEL, wcslen(szwBoxText), wcslen(szwBoxText));
+        /** Copy it INTO the box-text by REPLACING THE LAST LINE:                     */
+        SendMessage(hWndEdit, EM_SETSEL, -1, -1); // End
+        int iLastLine = (int)SendMessage(hWndEdit, EM_LINEFROMCHAR, -1, 0);
+        int iStart = (int)SendMessage(hWndEdit, EM_LINEINDEX, iLastLine, 0);
+        SendMessage(hWndEdit, EM_SETSEL, iStart, -1);
+        
+        // Rebuild line: "> " + buffer[1+]
+        std::wstring sNewPrompt = L"> ";
+        sNewPrompt += &buffer[1];
+        SendMessage(hWndEdit, EM_REPLACESEL, 0, (LPARAM)sNewPrompt.c_str());
+        
+        /** Update prompt-start location:                                             */
+        SendMessage(hWndEdit, EM_SETSEL, -1, -1);
+        Command.m_dwEditLastLF = SendMessage(hWndEdit, EM_LINEINDEX, -1, 0);
         /** Trigger a scroll:                                                         */
         SendMessage(hWndEdit, EM_SCROLLCARET, 0, 0);
         /** And store the newly found position for the next run:                      */
@@ -435,19 +502,32 @@ void vDoTabScan(bool bDir, bool bReScan) {
 /** Support-function to build the info-text: ******************************************/
 
 void vCreateInfoText(WCHAR* pszwOutput) {
-    wcscpy(pszwOutput, L"  * ");
-    vAddVersionInfo(pszwOutput, L"InternalName");
-    wcscat(pszwOutput, L" ");
-    vAddVersionInfo(pszwOutput, L"FileVersion");
-    wcscat(pszwOutput, L", ");
-    vAddVersionInfo(pszwOutput, L"LegalCopyright");
-    wcscat(pszwOutput, L"\r\n");
+    WCHAR buffer[256];
+    pszwOutput[0] = 0;
+    
+    // Attempt to load info, but adding prefixes only if successful
+    if (vAddVersionInfo(buffer, L"InternalName")) {
+        wcscat(pszwOutput, L"  * ");
+        wcscat(pszwOutput, buffer);
+    }
+    if (vAddVersionInfo(buffer, L"FileVersion")) {
+        if (pszwOutput[0] != 0) wcscat(pszwOutput, L" ");
+        else wcscat(pszwOutput, L"  * ");
+        wcscat(pszwOutput, buffer);
+    }
+    if (vAddVersionInfo(buffer, L"LegalCopyright")) {
+        if (pszwOutput[0] != 0) wcscat(pszwOutput, L", ");
+        else wcscat(pszwOutput, L"  * ");
+        wcscat(pszwOutput, buffer);
+    }
+    
+    if (pszwOutput[0] != 0) wcscat(pszwOutput, L"\r\n");
     wcscat(pszwOutput, cszwHelpText);
 }
 
 /** Support-function to fetch info from the version-resource: *************************/
 
-void vAddVersionInfo(WCHAR* pszwOutput, const WCHAR* pszwEntry) {
+bool vAddVersionInfo(WCHAR* pszwOutput, const WCHAR* pszwEntry) {
     /** Variables:                                                                    */
     DWORD   vLen, langD;
     BOOL    retVal;
@@ -473,17 +553,27 @@ void vAddVersionInfo(WCHAR* pszwOutput, const WCHAR* pszwEntry) {
                         (langD & 0xff00) >> 8, langD & 0xff, (langD & 0xff000000) >> 24,
                         (langD & 0xff0000) >> 16, pszwEntry);
                     #endif
+                    if (VerQueryValue(versionInfo, fileEntry, &retbuf, (UINT *)&vLen)) {
+                        wcscpy(pszwOutput, (WCHAR*)retbuf);
+                        return true;
+                    }
                 }
-                else {
-                    swprintf(fileEntry, L"\\StringFileInfo\\%04X04B0\\%s",
-                        GetUserDefaultLangID(), pszwEntry);
-                }
+                
+                // Fallback 1: System Language
+                swprintf(fileEntry, L"\\StringFileInfo\\%04X04B0\\%s", GetUserDefaultLangID(), pszwEntry);
                 if (VerQueryValue(versionInfo, fileEntry, &retbuf, (UINT *)&vLen)) {
-                    wcscat(pszwOutput, (WCHAR*)retbuf);
+                    wcscpy(pszwOutput, (WCHAR*)retbuf);
+                    return true;
+                }
+
+                // Fallback 2: Hardcoded US English (matches our .rc file)
+                swprintf(fileEntry, L"\\StringFileInfo\\040904B0\\%s", pszwEntry);
+                if (VerQueryValue(versionInfo, fileEntry, &retbuf, (UINT *)&vLen)) {
+                    wcscpy(pszwOutput, (WCHAR*)retbuf);
+                    return true;
                 }
             }
         }
-        UnlockResource(hGlobal);
-        FreeResource(hGlobal);
     }
+    return false;
 }

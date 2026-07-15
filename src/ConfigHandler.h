@@ -38,6 +38,7 @@
 #define CNF_DEF_LINES     44
 #define CNF_DEF_FONTSIZE  25
 #define CNF_DEF_COLORMODE 0
+#define CNF_DEF_DEFAULTUI 1
 
 #define CNF_MAX_COLORMODE 2
 
@@ -48,13 +49,14 @@
 class CConfigHandler {
 public:
     // Properties:
-    INT32        iTop, iLeft, iHeight, iWidth, iOpacity, iPrecision, iLines, iFontSize, iColorMode;
+    INT32        iTop, iLeft, iHeight, iWidth, iOpacity, iPrecision, iLines, iFontSize, iColorMode, iDefaultUI;
     std::wstring sText, sLightBg, sLightTxt, sDarkBg, sDarkTxt, sResultLightColor, sResultDarkColor;
     // Methods:
     CConfigHandler();
     ~CConfigHandler();
     bool   bIsPortable(void);
     void   vGetColors(DWORD &cBg, DWORD &cTxt, DWORD &cRes);
+    bool   bIsDarkTheme(void);
 private:
     bool  bPortable;
     void  vCheckPortable(void);

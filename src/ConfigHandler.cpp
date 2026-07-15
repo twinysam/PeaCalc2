@@ -147,6 +147,7 @@ bool CConfigHandler::bWriteToFile(const WCHAR* pszwFName) {
     fwprintf(fp, L"Precision=%d\n", iPrecision);
     fwprintf(fp, L"Lines=%d\n"            , iLines           );
     fwprintf(fp, L"ColorMode=%d\n"        , iColorMode       );
+    fwprintf(fp, L"DefaultUI=%d\n"        , iDefaultUI       );
     fwprintf(fp, L"LightBg=%ls\n"          , sLightBg.c_str() );
     fwprintf(fp, L"LightTxt=%ls\n"         , sLightTxt.c_str());
     fwprintf(fp, L"DarkBg=%ls\n"           , sDarkBg.c_str()  );
@@ -233,6 +234,7 @@ bool CConfigHandler::bReadFromFile(const WCHAR* pszwFName) {
         else if (wcsncmp(buf, L"Precision=", 10) == 0) iPrecision = wcstol(buf + 10, NULL, 10);
         else if (wcsncmp(buf, L"Lines=", 6) == 0) iLines = wcstol(buf + 6, NULL, 10);
         else if (wcsncmp(buf, L"ColorMode=", 10) == 0) iColorMode = wcstol(buf + 10, NULL, 10);
+        else if (wcsncmp(buf, L"DefaultUI=", 10) == 0) iDefaultUI = wcstol(buf + 10, NULL, 10);
         else if (wcsncmp(buf, L"LightBg=", 8) == 0) sLightBg = buf + 8;
         else if (wcsncmp(buf, L"LightTxt=", 9) == 0) sLightTxt = buf + 9;
         else if (wcsncmp(buf, L"DarkBg=", 7) == 0) sDarkBg = buf + 7;
@@ -273,6 +275,7 @@ void CConfigHandler::vSetDefaultData(void) {
     sText      = L"";
     
     iColorMode = CNF_DEF_COLORMODE;
+    iDefaultUI = CNF_DEF_DEFAULTUI;
     sLightBg   = L"FFFFFF";
     sLightTxt  = L"000000";
     sDarkBg    = L"000000";
@@ -351,3 +354,15 @@ bool CConfigHandler::bIsSystemDarkMode(void) {
     // Fallback validity check: if System is dark, assume dark.
     return !bSystemLight;
 }
+
+/** Helper to check if dark theme is currently used: **********************************/
+
+bool CConfigHandler::bIsDarkTheme(void) {
+    if (iColorMode == 2) {
+        return true;
+    } else if (iColorMode == 0) {
+        return bIsSystemDarkMode();
+    }
+    return false;
+}
+

@@ -1,9 +1,15 @@
-# __PeaCalc__
+# __PeaCalc2__
 ## Overview
 PeaCalc is a tiny interpreter for mathematical expressions.  
 It runs completely in text-mode and allows full use of the cursor-keys and clipboard.  
 Mathematical terms can be edited in the last line.  
 With _TAB_ and _SHIFT_ + _TAB_, the previous calculations can be recalled. 
+
+## New in PeaCalc2 (v2.0)
+PeaCalc2 introduces a couple aesthetic modern features to the original project:
+* **Dark Mode Support**: Seamless integration with your system's light/dark settings.
+* **Custom Themes**: Fully configurable colors for text, background, and results.
+* **Default Window Controls**: Toggleable standard Windows title bar style with Minimize, Maximize, and Close buttons, featuring a dynamic title bar theme that synchronizes with system light/dark preferences in real-time.
 
 There is a small set of special commands, which can be executed:
 
@@ -164,6 +170,7 @@ Since there's no way yet of changing these settings out of the application itsel
 * _LightBg_, _LightTxt_: Hex colors (e.g., FFFFFF) for background and text in Light mode.
 * _DarkBg_, _DarkTxt_: Hex colors (e.g., 000000) for background and text in Dark mode.
 * _ResultLightColor_, _ResultDarkColor_: Hex colors for the result text.
+* _DefaultUI_: Toggle standard Windows style title bar with Minimize, Maximize, and Close buttons (1 = enabled, 0 = disabled/use compact tool window).
 
 ## Developer Notes
 This project is can be built with Mingw-w64 or Visual Studio. Some compiler switches were added, to ensure support for both environments.  
@@ -172,7 +179,10 @@ Note, that the 32-bit version of MinGW caused some trouble, so I decided against
 The help-html file is created at build-time from the read-me file using Pandoc.
 
 ## License
+PeaCalc2 is a fork of PeaCalc by J.D. Schlachter, modified and maintained by Santiago Méndez (https://github.com/twinysam/PeaCalc2).
+
 Copyright (C) 2018 J.D. Schlachter <osw.schlachter@mailbox.org>  
+Copyright (C) 2026 Santiago Méndez
   
 This program is free software: you can redistribute it and/or modify  
 it under the terms of the GNU General Public License as published by  
