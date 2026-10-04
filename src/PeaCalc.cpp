@@ -79,16 +79,16 @@ void UpdateColorSettings() {
 typedef HRESULT(WINAPI* fnDwmSetWindowAttribute)(HWND, DWORD, LPCVOID, DWORD);
 
 void SetWindowDarkTheme(HWND hwnd, BOOL bDark) {
-    HMODULE hDwm = LoadLibrary(L"dwmapi.dll");
-    if (hDwm) {
-        fnDwmSetWindowAttribute pfn = (fnDwmSetWindowAttribute)GetProcAddress(hDwm, "DwmSetWindowAttribute");
-        if (pfn) {
-            BOOL bUseDark = bDark;
-            pfn(hwnd, 20, &bUseDark, sizeof(bUseDark));
-            pfn(hwnd, 19, &bUseDark, sizeof(bUseDark));
-            SetWindowPos(hwnd, NULL, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
-        }
-        FreeLibrary(hDwm);
+    /** Resolve dwmapi once and keep it for the process lifetime. */
+    static HMODULE hDwm = LoadLibraryW(L"dwmapi.dll");
+    static fnDwmSetWindowAttribute pfn = hDwm
+        ? (fnDwmSetWindowAttribute)GetProcAddress(hDwm, "DwmSetWindowAttribute")
+        : NULL;
+    if (pfn) {
+        BOOL bUseDark = bDark;
+        pfn(hwnd, 20, &bUseDark, sizeof(bUseDark));
+        pfn(hwnd, 19, &bUseDark, sizeof(bUseDark));
+        SetWindowPos(hwnd, NULL, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
     }
 }
 
@@ -99,7 +99,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
     MSG msg;
     WNDCLASSEX wndclass;
     /** Change the application-title if portable:                                     */
-    if (!Config.bIsPortable()) szAppName[7] = 0;
+    if (!Config.bIsPortable()) szAppName[8] = 0;
     /** Create the info-text and make it available to the command-handler:            */
     vCreateInfoText(pszwInfoText);
     UpdateColorSettings(); // Initialize colors
@@ -114,7 +114,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
     wndclass.hIcon = LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_APPICON));
     wndclass.hIconSm = (HICON)LoadImage(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_APPICON), IMAGE_ICON, 16, 16, 0);
     wndclass.hCursor = LoadCursor(NULL, IDC_ARROW);
-    wndclass.hbrBackground = (HBRUSH)GetStockObject(WHITE_BRUSH);
+    /** The main window erases itself with the current theme brush (WM_ERASEBKGND),
+        so no fixed stock brush is used here.                                         */
+    wndclass.hbrBackground = NULL;
     wndclass.lpszMenuName = NULL;
     wndclass.lpszClassName = szAppName;
     /** Try to register it:                                                           */
@@ -156,8 +158,8 @@ HWND CreateEditBox(HWND hOwner, WPARAM wParam, LPARAM lParam) {
     /** Variables:                                                                    */
     HWND   hWndEdit;
     HFONT  hFont;
-    /** Create the edit-box-control:                                                  */
-    static HMODULE hModRichEdit = LoadLibrary(L"Msftedit.dll");
+    /** Make sure the RichEdit library is loaded before creating the control:         */
+    LoadLibrary(L"Msftedit.dll");
     /** Create the edit-box-control:                                                  */
     hWndEdit = CreateWindow(L"RICHEDIT50W", NULL,
         WS_CHILD | WS_VISIBLE | ES_LEFT | ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL,
@@ -171,7 +173,6 @@ HWND CreateEditBox(HWND hOwner, WPARAM wParam, LPARAM lParam) {
     }
     /** Overwrite its message-procedure and conserve the low-level one:               */
     lpfnEditBoxLowProc = (WNDPROC)SetWindowLongPtr(hWndEdit,GWLP_WNDPROC,(LONG_PTR)EditBoxProc );
-    /** Set the font of the edit-box:                                                 */
     /** Set the font of the edit-box:                                                 */
     hFont = CreateFont(Config.iFontSize, 0, 0, 0,
         FW_DONTCARE,                  // nWeight
@@ -208,7 +209,7 @@ void CloseMain(HWND hwnd, WPARAM wParam, LPARAM lParam) {
     Config.iHeight = (rcWind.bottom - rcWind.top);
     Config.iWidth  = (rcWind.right - rcWind.left);
     /** Get the edit-text and store it:                                               */
-    GetWindowText(hWndEdit, buffer, sizeof(buffer));
+    GetWindowText(hWndEdit, buffer, C_TEXTBUFSIZE);
     Config.sText   = std::wstring(buffer);
     /** And send a quit message to the application:                                   */
     PostQuitMessage(0);
@@ -273,6 +274,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) 
         Command.vColorizeText(hWndEdit);
         InvalidateRect(hwnd, NULL, TRUE);
         break;
+    case WM_ERASEBKGND: {
+        /** Paint the window background with the active theme colour to avoid the
+            default white flash (especially in dark mode). */
+        RECT rc;
+        GetClientRect(hwnd, &rc);
+        if (hBgBrush) FillRect((HDC)wParam, &rc, hBgBrush);
+        return 1;
+    }
     case WM_CTLCOLOREDIT:
     case WM_CTLCOLORSTATIC:
         SetTextColor((HDC)wParam, cTxtColor);
@@ -409,7 +418,7 @@ void vDoTabScan(bool bDir, bool bReScan) {
     /** Check, if rescan has to be done:                                              */
     if (bReScan) {
         /** It has to, so fetch the text and prepare the scan:                        */
-        GetWindowText(hWndEdit, szwBoxText, sizeof(szwBoxText));
+        GetWindowText(hWndEdit, szwBoxText, C_TEXTBUFSIZE);
         /** Create the scan-string from the ACTUAL terminal text:                      */
         SendMessage(hWndEdit, EM_SETSEL, -1, -1);
         dwIndex = SendMessage(hWndEdit, EM_LINEINDEX, -1, 0);

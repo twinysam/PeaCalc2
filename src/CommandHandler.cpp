@@ -23,6 +23,8 @@
 #include <shellapi.h>
 #include <string>
 #include <algorithm>
+#include <cmath>
+#include <cwctype>
 #include <math.h>
 #include <Richedit.h>
 #include "ConfigHandler.h"
@@ -58,7 +60,6 @@ void CCommandHandler::vSetInfoText(WCHAR* pszwTextPtr) {
 
 void CCommandHandler::vSetText(HWND hEditBox, const WCHAR* pszwNewText) {
     TCHAR  buffer[C_TEXTBUFSIZE];
-    DWORD  dwIndex;
     if (pszwNewText[0] != L'\0') {
         wcscpy(buffer, pszwNewText);
     } else {
@@ -94,7 +95,7 @@ void CCommandHandler::vProcEnter(HWND hMain, HWND hEditBox) {
     // Get text from this line only?
     // Get everything from dwLineIndex to end
     dwIndex = dwTextLen - dwLineIndex;
-    if (dwIndex <= 3) return; // Only prompt or empty
+    if (dwIndex <= 2) return; // Only the empty prompt ("> ") or nothing at all
     
     WCHAR* pszBuff = new WCHAR[dwIndex + 1];
     TEXTRANGEW tr;
@@ -142,6 +143,22 @@ void CCommandHandler::vProcEnter(HWND hMain, HWND hEditBox) {
          SendMessage(hEditBox, EM_SETSEL, -1, -1);
          SendMessage(hEditBox, EM_REPLACESEL, 0, (LPARAM)L"\r\n");
          SendMessage(hEditBox, EM_REPLACESEL, 0, (LPARAM)m_pszwInfoText);
+         SendMessage(hEditBox, EM_SETSEL, -1, -1);
+         m_dwEditLastLF = SendMessage(hEditBox, EM_LINEINDEX, -1, 0);
+         return;
+    } else if (sInput == L"license") {
+         // Open the GPL text externally
+         ShellExecute(NULL, L"open", L"LICENSE.txt", NULL, NULL, SW_SHOW);
+         SendMessage(hEditBox, EM_SETSEL, -1, -1);
+         SendMessage(hEditBox, EM_REPLACESEL, 0, (LPARAM)L"\r\n> ");
+         SendMessage(hEditBox, EM_SETSEL, -1, -1);
+         m_dwEditLastLF = SendMessage(hEditBox, EM_LINEINDEX, -1, 0);
+         return;
+    } else if (sInput == L"min") {
+         // Minimize the main window
+         SendMessage(hMain, WM_SYSCOMMAND, SC_MINIMIZE, 0);
+         SendMessage(hEditBox, EM_SETSEL, -1, -1);
+         SendMessage(hEditBox, EM_REPLACESEL, 0, (LPARAM)L"\r\n> ");
          SendMessage(hEditBox, EM_SETSEL, -1, -1);
          m_dwEditLastLF = SendMessage(hEditBox, EM_LINEINDEX, -1, 0);
          return;
@@ -201,15 +218,22 @@ std::wstring CCommandHandler::vProcMath(std::wstring sInput) {
     /** Save the input in the output-string:                                          */
     sOutput = L"> " + sInput + L"\r\n";
     /** Change the input to lower-case:                                               */
-    std::transform(sInput.begin(), sInput.end(), sInput.begin(), ::tolower);
+    std::transform(sInput.begin(), sInput.end(), sInput.begin(),
+                   [](wchar_t c) { return (wchar_t)std::towlower(c); });
     /** Check for output-formatting:                                                  */
     if (sInput.substr(0,4) == L"hex(") {
         /** It shall be hexadecimal:                                                  */
-        sInput = sInput.substr(4); // substr(4) for "hex("
+        sInput = sInput.substr(4); // drop "hex("
         bOutputHex = true;
     }else if (sInput.substr(0, 4) == L"bin(") {
-        sInput = sInput.substr(4);
+        sInput = sInput.substr(4); // drop "bin("
         bOutputBin = true;
+    }
+    /** If a wrapper was used, drop its optional trailing bracket and spaces so that
+        both "hex(EXPR)" and "hex(EXPR" are accepted.                                */
+    if (bOutputHex || bOutputBin) {
+        while (!sInput.empty() && sInput.back() == L' ') sInput.pop_back();
+        if (!sInput.empty() && sInput.back() == L')') sInput.pop_back();
     }
     /** Try to parse it:                                                              */
     s32Result = m_TermMain.s32Parse(sInput);
@@ -317,7 +341,11 @@ std::wstring CCommandHandler::sOutputFloat(double dInput) {
     WCHAR  szwFormat[40];
     double dTemp = dInput/10;
     int    iIntDigits = 1;
+    /** Clamp the configured precision so the temporary buffers can never overflow
+        and so an invalid (e.g. negative) precision cannot reach swprintf.         */
     int    iDecimals  = m_pConfig->iPrecision;
+    if (iDecimals < 0) iDecimals = 0;
+    if (iDecimals > CNF_MAX_PRECISION) iDecimals = CNF_MAX_PRECISION;
     /** Check, if the input is in the range for fixed-point:                          */
     if ((abs(dInput) < 1000000) && (abs(dInput) > 0.09)) {
         /** It is, so get the number of integer-digits:                               */
@@ -326,15 +354,17 @@ std::wstring CCommandHandler::sOutputFloat(double dInput) {
             dTemp = dTemp / 10;
             iIntDigits++;
         }
+        if (iIntDigits > CNF_MAX_PRECISION) iIntDigits = CNF_MAX_PRECISION;
         /** Make sure, that there's enough space for the precision:                   */
         if ((iIntDigits + iDecimals) > CNF_MAX_PRECISION) iDecimals = CNF_MAX_PRECISION - iIntDigits + 1;
+        if (iDecimals < 0) iDecimals = 0;
         /** And build the output:                                                     */
         swprintf(szwFormat, L"%%1.%df", iDecimals);
         swprintf(szwNumBuf, szwFormat , dInput);
         return std::wstring(szwNumBuf);
     }
     /** It is not fixed-point, thus write it exponential style:                       */
-    swprintf(szwFormat, L"%%1.%dE", m_pConfig->iPrecision);
+    swprintf(szwFormat, L"%%1.%dE", iDecimals);
     swprintf(szwNumBuf, szwFormat, dInput);
     return std::wstring(szwNumBuf);
 }
@@ -342,19 +372,11 @@ std::wstring CCommandHandler::sOutputFloat(double dInput) {
 /** Small support-functions: **********************************************************/
 
 bool CCommandHandler::isInteger(double dInput) {
-  double fractpart, intpart;
-  fractpart = modf (dInput , &intpart);
-  if (fractpart>0) return false;
-  return true;
-}
-
-void CCommandHandler::vRollback(WCHAR* pszwInput, WCHAR* pszwNewStart) {
-    while (*pszwNewStart != L'\0') {
-        *pszwInput = *pszwNewStart;
-        pszwInput++;
-        pszwNewStart++;
-    }
-    *pszwInput = L'\0';
+  double intpart;
+  /** Non-finite values are not safely representable as integers. */
+  if (!std::isfinite(dInput)) return false;
+  /** Any non-zero fractional part (positive OR negative) means it is a float. */
+  return (modf(dInput, &intpart) == 0.0);
 }
 
 /** Colorizes the text in the editor: *************************************************/

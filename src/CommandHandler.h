@@ -53,5 +53,4 @@ private:
     std::wstring    sOutputInt(double dInput);
     std::wstring    sOutputFloat(double dInput);
     bool            isInteger(double dInput);
-    void            vRollback(WCHAR* pszwInput, WCHAR* pszwNewStart);
 };

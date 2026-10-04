@@ -83,7 +83,7 @@ The output can be converted by wrapping the expression with a modifier:
 |  Operation  | Description                                                       
 |-------------|---------------------------------------------------------------------
 |   hex(a)    | Calculates a, and then converts its output to hex.
-|   bin(a)    | Calculates a, and then converts its output to hex.
+|   bin(a)    | Calculates a, and then converts its output to binary.
 
 ___Note:___  
 _Since the calculator-engine is completely based on the double data-type, there are three restrictions to be considered:_  

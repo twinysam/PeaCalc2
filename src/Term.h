@@ -58,16 +58,18 @@ class CTerm {
 public:
     CTerm();
     ~CTerm();
+    CTerm(const CTerm&) = delete;
+    CTerm& operator=(const CTerm&) = delete;
     void   vReset(void);
-    INT32  s32Parse(const std::wstring sInput);
+    INT32  s32Parse(const std::wstring& sInput);
     INT32  s32Execute(const double dInput, double* pdOutput);
 protected:
     bool   bRemoveSurroundingBrackets(std::wstring* psInput);
-    INT32  s32ParseOperand(std::wstring sInput);
-    INT32  s32OperatorFinder (const std::wstring sInput, const std::wstring sOperator);
-    INT32  s32OperatorRevFind(const std::wstring sInput, const std::wstring sOperator);
-    INT32  s32ParseOperator(const std::wstring sInput, UINT32* pu32OpType);
-    INT32  s32Declare(std::wstring sInput);
+    INT32  s32ParseOperand(const std::wstring& sInput);
+    INT32  s32OperatorFinder (const std::wstring& sInput, const std::wstring& sOperator);
+    INT32  s32OperatorRevFind(const std::wstring& sInput, const std::wstring& sOperator);
+    INT32  s32ParseOperator(const std::wstring& sInput, UINT32* pu32OpType);
+    INT32  s32Declare(const std::wstring& sInput);
 private:
     CTerm* m_pSubT1;
     CTerm* m_pSubT2;

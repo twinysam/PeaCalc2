@@ -171,32 +171,6 @@ bool CConfigHandler::bWriteToFile(const WCHAR* pszwFName) {
     return true;
 }
 
-/** Entry-Parser: *********************************************************************
- *    Tries to read and parse a value with a given token from the ini-file:           */
-
-INT32 CConfigHandler::iParseFileEntry(FILE *fp, const WCHAR* pszwToken, DWORD dwLim, INT32 ulDefault) {
-    WCHAR buf[1000];
-    DWORD dwRdVal;
-    WCHAR *epr;
-    /** Try to fetch a line from the file:                                            */
-    if (fgetws(buf, 1000, fp) == NULL) return ulDefault;
-    /** Check, if it contains the expected token:                                     */
-    if (wcsncmp(buf, pszwToken, wcslen(pszwToken)) != 0) return ulDefault;
-    /** Try to parse the numeric argument behind it:                                  */
-    dwRdVal = wcstol(&buf[wcslen(pszwToken)], &epr, 10);
-    /** When the result is not in bounds, it was not successful:                      */
-    if ((dwRdVal < 1) || (dwRdVal > dwLim)) return ulDefault;
-    /** If it was, the value can be written out:                                      */
-    return (INT32)dwRdVal;
-}
-
-/** Entry-Parser for strings: *********************************************************
- *    Tries to read and parse a string value with a given token from the ini-file:    */
-
-void CConfigHandler::vParseStringEntry(FILE *fp, const WCHAR* pszwToken, std::wstring &sTarget, const WCHAR* pszwDefault) {
-    // This function is kept for structural consistency but checking code shows it is unused now.
-}
-
 /** File-Reader: **********************************************************************
  *    Open the source-file and uses the parser above to fetch the configuration-      *
  *    values one by one:                                                              */
@@ -204,7 +178,6 @@ void CConfigHandler::vParseStringEntry(FILE *fp, const WCHAR* pszwToken, std::ws
 bool CConfigHandler::bReadFromFile(const WCHAR* pszwFName) {
     FILE *fp;
     WCHAR buf[1000];
-    WCHAR *endptr;
     
     fp = _wfopen(pszwFName, L"r, ccs=UTF-8");
     if (fp == NULL) return false;
@@ -242,6 +215,21 @@ bool CConfigHandler::bReadFromFile(const WCHAR* pszwFName) {
         else if (wcsncmp(buf, L"ResultLightColor=", 17) == 0) sResultLightColor = buf + 17;
         else if (wcsncmp(buf, L"ResultDarkColor=", 16) == 0) sResultDarkColor = buf + 16;
     }
+
+    // Clamp values to safe ranges; the ini-file can be edited by hand and
+    // out-of-range values must never reach window creation or swprintf().
+    if (iPrecision < 1)                      iPrecision = 1;
+    else if (iPrecision > CNF_MAX_PRECISION) iPrecision = CNF_MAX_PRECISION;
+    if (iFontSize < 1)                       iFontSize = 1;
+    else if (iFontSize > CNF_MAX_FONTSIZE)   iFontSize = CNF_MAX_FONTSIZE;
+    if (iOpacity < 0)                        iOpacity = 0;
+    else if (iOpacity > CNF_MAX_OPACITY)     iOpacity = CNF_MAX_OPACITY;
+    if (iLines < 1)                          iLines = 1;
+    else if (iLines > CNF_MAX_LINES)         iLines = CNF_MAX_LINES;
+    if (iColorMode < 0)                      iColorMode = 0;
+    else if (iColorMode > CNF_MAX_COLORMODE) iColorMode = CNF_MAX_COLORMODE;
+    if (iWidth  < 1) iWidth  = CNF_DEF_WIDTH;
+    if (iHeight < 1) iHeight = CNF_DEF_HEIGHT;
 
     if ((iLines & 1)==0) iLines++;
 

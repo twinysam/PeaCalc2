@@ -61,8 +61,6 @@ private:
     bool  bPortable;
     void  vCheckPortable(void);
     bool  bWriteToFile(const WCHAR* pszwFName);
-    INT32 iParseFileEntry(FILE *fp, const WCHAR* pszwToken, DWORD dwLim, INT32 ulDefault);
-    void  vParseStringEntry(FILE *fp, const WCHAR* pszwToken, std::wstring &sTarget, const WCHAR* pszwDefault);
     bool  bReadFromFile(const WCHAR* pszwFName);
     void  vSetDefaultData(void);
     DWORD dwHexToRGB(std::wstring sHex, DWORD cDefault);
