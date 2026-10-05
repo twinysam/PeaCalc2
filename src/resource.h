@@ -22,3 +22,9 @@
 #define IDD_INFOBOX   101
 #define ID_EDIT       110
 #define IDC_INFO_EDIT 1001
+
+/** Command for the "About" entry in the window (title-bar) menu. The low four bits
+    of a WM_SYSCOMMAND wParam are reserved by the system, so the identifier has to be
+    a multiple of 16 and must stay clear of the SC_* range (0xF000 and up).          */
+
+#define IDM_ABOUT     0x0100

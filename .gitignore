@@ -1,2 +1,5 @@
 /build
 src/pre-fork-source
+/.analysis
+/.cursor
+REGRESSION-REVIEW.md

@@ -10,10 +10,11 @@ PeaCalc2 introduces a couple aesthetic modern features to the original project:
 * **Dark Mode Support**: Seamless integration with your system's light/dark settings.
 * **Custom Themes**: Fully configurable colors for text, background, and results.
 * **Default Window Controls**: Toggleable standard Windows title bar style with Minimize, Maximize, and Close buttons, featuring a dynamic title bar theme that synchronizes with system light/dark preferences in real-time.
+* **About in the window-menu**: The title bar's system menu carries a bold **About PeaCalc2** entry that opens the info pop-up.
 
 There is a small set of special commands, which can be executed:
 
-* _info_ opens a native pop-up with the current version, copyright-notice and a clickable project link. The same pop-up is shown on first start and can be opened by right-clicking the title bar.
+* _info_ opens a native pop-up with the current version, copyright-notice and a clickable project link. The same pop-up is shown on first start and can be opened at any time via **About PeaCalc2** in the window-menu (right-click the title bar, or press _ALT_ + _SPACE_).
 * _license_ opens the license-file as as published by the Free Software Foundation.  
 * _help_ opens this file in a browser.
 * _clear_ clears the text-buffer.

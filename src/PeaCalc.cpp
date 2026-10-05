@@ -54,6 +54,7 @@ WCHAR           szAppName[]    = TEXT("PeaCalc2 Portable");
 const WCHAR     cszwHelpText[] = TEXT("  * This program comes with ABSOLUTELY NO WARRANTY.\r\n  * It is free software; you can redistribute it and/or modify it\r\n  * under the terms of the GNU General Public License version 3,\r\n  * or (at your option) any later version; type 'license' for details.\r\n  * Type 'help' to open the user-manual.\r\n\r\n  Project page and updates: https://github.com/twinysam/PeaCalc2");
 WCHAR           pszwInfoText[C_TEXTBUFSIZE];
 WNDPROC         lpfnEditBoxLowProc;
+WNDPROC         lpfnInfoEditLowProc;
 CConfigHandler  Config;
 CCommandHandler Command(&Config);
 
@@ -62,10 +63,12 @@ CCommandHandler Command(&Config);
 LRESULT CALLBACK WndProc        (HWND, UINT, WPARAM, LPARAM);
 LRESULT CALLBACK EditBoxProc    (HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK InfoBoxProc    (HWND, UINT, WPARAM, LPARAM);
+LRESULT CALLBACK InfoEditProc   (HWND, UINT, WPARAM, LPARAM);
 void vDoTabScan(bool bDir, bool bReScan);
 void vCreateInfoText (WCHAR* pszwOutput);
 bool vAddVersionInfo(WCHAR* pszwOutput, const WCHAR* pszwEntry);
 void ShowInfoDialog  (HWND hOwner);
+void vFitInfoDialog  (HWND hDlg);
 
 /** Helper Functions for Colors: ******************************************************/
 
@@ -93,6 +96,23 @@ void SetWindowDarkTheme(HWND hwnd, BOOL bDark) {
         pfn(hwnd, 19, &bUseDark, sizeof(bUseDark));
         SetWindowPos(hwnd, NULL, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
     }
+}
+
+/** Helper to add the "About" entry to the window (title-bar) menu: *******************/
+
+void vAddAboutToSystemMenu(HWND hwnd) {
+    /** GetSystemMenu(hwnd, FALSE) only retrieves the existing menu; the menu itself is
+        created together with the window, so this already works from WM_CREATE on.    */
+    HMENU hSysMenu = GetSystemMenu(hwnd, FALSE);
+    if (hSysMenu == NULL) return;
+    /** Make sure the entry is only ever added once.                                  */
+    if (GetMenuState(hSysMenu, IDM_ABOUT, MF_BYCOMMAND) != (UINT)-1) return;
+    AppendMenu(hSysMenu, MF_SEPARATOR, 0, NULL);
+    AppendMenu(hSysMenu, MF_STRING, IDM_ABOUT, L"&About PeaCalc2");
+    /** AppendMenu has no MF_DEFAULT flag - it silently ignores it. SetMenuDefaultItem
+        is the call that marks the entry as the menu's default command, and Windows
+        draws the default entry in bold.                                              */
+    SetMenuDefaultItem(hSysMenu, IDM_ABOUT, MF_BYCOMMAND);
 }
 
 /** Application entry function: *******************************************************/
@@ -232,6 +252,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) 
     case WM_CREATE:
         /** Prepare window for opacity:                                               */
         SetWindowLong(hwnd, GWL_EXSTYLE, GetWindowLong(hwnd, GWL_EXSTYLE) | WS_EX_LAYERED);
+        /** Add the "About" entry to the window-menu:                                 */
+        vAddAboutToSystemMenu(hwnd);
         /** Create Edit-Box:                                                          */
         hWndEdit = CreateEditBox(hwnd, wParam, lParam);
         break;
@@ -252,12 +274,20 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) 
         MoveWindow(hWndEdit, 0, 0, LOWORD(lParam), HIWORD(lParam), TRUE);
         SendMessage(hWndEdit, EM_SCROLLCARET, 0, 0);
         return 0;
-    case WM_NCRBUTTONUP:
-        /** Right-click on the title bar opens the info pop-up (instead of the
-            system menu).                                                             */
-        if (wParam == HTCAPTION) {
+    case WM_SYSCOMMAND:
+        /** Command picked from the window (title-bar) menu. The four low-order bits
+            of wParam are used by the system and have to be masked off.               */
+        if ((wParam & 0xFFF0) == IDM_ABOUT) {
             ShowInfoDialog(hwnd);
             return 0;
+        }
+        break;
+    case WM_INITMENUPOPUP:
+        /** When DefWindowProc displays the window menu it makes SC_CLOSE that menu's
+            default item, and a menu only ever has one - which silently drops the bold
+            from our "About" entry. Claim the default slot back for it.               */
+        if (((HMENU)wParam) == GetSystemMenu(hwnd, FALSE)) {
+            SetMenuDefaultItem((HMENU)wParam, IDM_ABOUT, MF_BYCOMMAND);
         }
         break;
     case WM_COMMAND:
@@ -601,6 +631,95 @@ bool vAddVersionInfo(WCHAR* pszwOutput, const WCHAR* pszwEntry) {
     return false;
 }
 
+/** Subclass of the info pop-up's text body: ******************************************
+ *    A read-only RichEdit is used so that URLs can be made clickable, but it must    *
+ *    not look or behave like an input field. Refusing the focus keeps the caret and  *
+ *    the selection highlight away while EN_LINK still reports clicks on the links.   */
+
+LRESULT CALLBACK InfoEditProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
+    if (message == WM_SETFOCUS) return 0;
+    return CallWindowProc(lpfnInfoEditLowProc, hwnd, message, wParam, lParam);
+}
+
+/** Shrinks the info pop-up around its text and centres it on the owner window: *******/
+
+void vFitInfoDialog(HWND hDlg) {
+    /** Variables:                                                                    */
+    HWND hInfo = GetDlgItem(hDlg, IDC_INFO_EDIT);
+    HDC   hdc;
+    HFONT hFont, hOld;
+    TEXTMETRICW tm;
+    RECT  r, rcOwner, rcWin, rcClient;
+    SIZE  sz;
+    int   iLineH, iMaxW, iStart, iLen, i, iMX, iMY, iGap, iBtnW, iBtnH;
+    int   iEditW, iEditH, iLines, iLimit, iClientW, iClientH, iWinW, iWinH;
+    if (hInfo == NULL) return;
+
+    /** Measure with the font the body actually uses.                                 */
+    hdc   = GetDC(hInfo);
+    hFont = (HFONT)SendMessage(hInfo, WM_GETFONT, 0, 0);
+    hOld  = (HFONT)SelectObject(hdc, hFont ? hFont : GetStockObject(DEFAULT_GUI_FONT));
+    GetTextMetricsW(hdc, &tm);
+    iLineH = tm.tmHeight + tm.tmExternalLeading;
+
+    /** The widest line decides how wide the body has to be.                          */
+    iMaxW  = 0;
+    iStart = 0;
+    iLen   = (int)wcslen(pszwInfoText);
+    for (i = 0; i <= iLen; i++) {
+        if ((i == iLen) || (pszwInfoText[i] == L'\r') || (pszwInfoText[i] == L'\n')) {
+            if ((i > iStart) &&
+                (GetTextExtentPoint32W(hdc, &pszwInfoText[iStart], i - iStart, &sz))) {
+                if (sz.cx > iMaxW) iMaxW = sz.cx;
+            }
+            iStart = i + 1;
+        }
+    }
+    SelectObject(hdc, hOld);
+    ReleaseDC(hInfo, hdc);
+    if ((iMaxW <= 0) || (iLineH <= 0)) return;
+
+    /** Translate the dialog-units of the resource layout into pixels. MapDialogRect
+        converts every coordinate on its own, so the extents are in right/bottom -
+        reading top for the vertical margin would always yield zero.                  */
+    SetRect(&r, 0, 0,  7,  7); MapDialogRect(hDlg, &r); iMX   = r.right; iMY  = r.bottom;
+    SetRect(&r, 0, 0,  0,  7); MapDialogRect(hDlg, &r); iGap  = r.bottom;
+    SetRect(&r, 0, 0, 50, 14); MapDialogRect(hDlg, &r); iBtnW = r.right; iBtnH = r.bottom;
+
+    /** Never grow wider than the window the pop-up belongs to, and keep a visible
+        margin around it so it still reads as a pop-up rather than a full-width bar.  */
+    GetWindowRect(GetParent(hDlg), &rcOwner);
+    iEditW = iMaxW + 4;
+    iLimit = (rcOwner.right - rcOwner.left) - (2 * iMX) - 80;
+    if (iEditW > iLimit) iEditW = iLimit;
+    if (iEditW < 150)    iEditW = 150;
+
+    /** Lay the body out at its final width first, then let it report its line count. */
+    SetWindowPos(hInfo, NULL, iMX, iMY, iEditW, 1, SWP_NOZORDER | SWP_NOACTIVATE);
+    iLines = (int)SendMessage(hInfo, EM_GETLINECOUNT, 0, 0);
+    if (iLines < 1) iLines = 1;
+    iEditH = (iLines * iLineH) + 4;
+    SetWindowPos(hInfo, NULL, iMX, iMY, iEditW, iEditH, SWP_NOZORDER | SWP_NOACTIVATE);
+
+    /** Button below the body, dialog sized around both.                              */
+    iClientW = (2 * iMX) + iEditW;
+    iClientH = iMY + iEditH + iGap + iBtnH + iMY;
+    SetWindowPos(GetDlgItem(hDlg, IDOK), NULL,
+                 iClientW - iMX - iBtnW, iMY + iEditH + iGap, iBtnW, iBtnH,
+                 SWP_NOZORDER | SWP_NOACTIVATE);
+
+    /** Add the frame the dialog already has, then centre it on the owner.            */
+    GetWindowRect(hDlg, &rcWin);
+    GetClientRect(hDlg, &rcClient);
+    iWinW = iClientW + ((rcWin.right - rcWin.left) - rcClient.right);
+    iWinH = iClientH + ((rcWin.bottom - rcWin.top) - rcClient.bottom);
+    SetWindowPos(hDlg, NULL,
+                 rcOwner.left + (((rcOwner.right - rcOwner.left) - iWinW) / 2),
+                 rcOwner.top  + (((rcOwner.bottom - rcOwner.top ) - iWinH) / 2),
+                 iWinW, iWinH, SWP_NOZORDER | SWP_NOACTIVATE);
+    InvalidateRect(hDlg, NULL, TRUE);
+}
+
 /** Info pop-up window procedure: *****************************************************/
 
 INT_PTR CALLBACK InfoBoxProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
@@ -610,12 +729,20 @@ INT_PTR CALLBACK InfoBoxProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPar
         SetWindowText(hDlg, szAppName);
         HWND hInfo = GetDlgItem(hDlg, IDC_INFO_EDIT);
         if (hInfo) {
+            /** Blend the body into the pop-up instead of looking like an input field. */
+            SendMessage(hInfo, EM_SETBKGNDCOLOR, 0, (LPARAM)GetSysColor(COLOR_3DFACE));
+            SendMessage(hInfo, EM_HIDESELECTION, TRUE, 0);
             SendMessage(hInfo, WM_SETTEXT, 0, (LPARAM)pszwInfoText);
             /** Let the RichEdit turn URLs into clickable links. */
             SendMessage(hInfo, EM_AUTOURLDETECT, (WPARAM)TRUE, 0);
             SendMessage(hInfo, EM_SETEVENTMASK, 0,
                         SendMessage(hInfo, EM_GETEVENTMASK, 0, 0) | ENM_LINK);
+            /** Read-only body that must not behave like an input field.              */
+            lpfnInfoEditLowProc = (WNDPROC)SetWindowLongPtr(hInfo, GWLP_WNDPROC,
+                                                            (LONG_PTR)InfoEditProc);
         }
+        /** Shrink the pop-up around its text and centre it on the calculator window. */
+        vFitInfoDialog(hDlg);
         return TRUE;
     }
     case WM_NOTIFY: {
