@@ -10,7 +10,12 @@ PeaCalc2 introduces a couple aesthetic modern features to the original project:
 * **Dark Mode Support**: Seamless integration with your system's light/dark settings.
 * **Custom Themes**: Fully configurable colors for text, background, and results.
 * **Default Window Controls**: Toggleable standard Windows title bar style with Minimize, Maximize, and Close buttons, featuring a dynamic title bar theme that synchronizes with system light/dark preferences in real-time.
+
+## New in v2.1
 * **About in the window-menu**: The title bar's system menu carries a bold **About PeaCalc2** entry that opens the info pop-up.
+* **Reworked info pop-up**: Opens centred on the calculator window, sized to its contents, and reads as part of the pop-up rather than as a text field — the project and copyright links stay clickable.
+* **Correctness fixes**: `hex()`/`bin()` accept their documented form again, one-character expressions work, negative fractions print correctly (`-1/2` now gives `-0.5` instead of `0`), `license` and `min` work again, `2^-3` parses, and unary `~` got standard precedence.
+* **Safety fixes**: a hand-edited _PeaCalc.ini_ can no longer overrun a stack buffer, and non-ASCII input no longer goes through the narrow `tolower()`.
 
 There is a small set of special commands, which can be executed:
 
