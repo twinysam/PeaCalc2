@@ -26,6 +26,7 @@
 #include "Term.h"
 #include "CommandHandler.h"
 #include <Richedit.h>
+#include <shellapi.h>
 
 /** Compiler Settings: ****************************************************************/
 
@@ -50,7 +51,7 @@
 HWND            hWndMain;
 HWND            hWndEdit;
 WCHAR           szAppName[]    = TEXT("PeaCalc2 Portable");
-const WCHAR     cszwHelpText[] = TEXT("  * This program comes with ABSOLUTELY NO WARRANTY.\r\n  * It is free software; you can redistribute it and/or modify it\r\n  * under the terms of the GNU General Public License version 3,\r\n  * or (at your option) any later version; type 'license' for details.\r\n  * Type 'info' for this notification.\r\n  * Type 'help' for the user-manual.\r\n> ");
+const WCHAR     cszwHelpText[] = TEXT("  * This program comes with ABSOLUTELY NO WARRANTY.\r\n  * It is free software; you can redistribute it and/or modify it\r\n  * under the terms of the GNU General Public License version 3,\r\n  * or (at your option) any later version; type 'license' for details.\r\n  * Type 'help' to open the user-manual.\r\n\r\n  Project page and updates: https://github.com/twinysam/PeaCalc2");
 WCHAR           pszwInfoText[C_TEXTBUFSIZE];
 WNDPROC         lpfnEditBoxLowProc;
 CConfigHandler  Config;
@@ -60,9 +61,11 @@ CCommandHandler Command(&Config);
 
 LRESULT CALLBACK WndProc        (HWND, UINT, WPARAM, LPARAM);
 LRESULT CALLBACK EditBoxProc    (HWND, UINT, WPARAM, LPARAM);
+INT_PTR CALLBACK InfoBoxProc    (HWND, UINT, WPARAM, LPARAM);
 void vDoTabScan(bool bDir, bool bReScan);
 void vCreateInfoText (WCHAR* pszwOutput);
 bool vAddVersionInfo(WCHAR* pszwOutput, const WCHAR* pszwEntry);
+void ShowInfoDialog  (HWND hOwner);
 
 /** Helper Functions for Colors: ******************************************************/
 
@@ -100,10 +103,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
     WNDCLASSEX wndclass;
     /** Change the application-title if portable:                                     */
     if (!Config.bIsPortable()) szAppName[8] = 0;
-    /** Create the info-text and make it available to the command-handler:            */
+    /** Create the info-text shown by the info pop-up:                                */
     vCreateInfoText(pszwInfoText);
     UpdateColorSettings(); // Initialize colors
-    Command.vSetInfoText(pszwInfoText);
     /** Prepare Window-Class:                                                         */
 	wndclass.cbSize        = sizeof(WNDCLASSEX);
     wndclass.style = CS_HREDRAW | CS_VREDRAW;
@@ -145,6 +147,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR szCmdLine,
     /** And show it:                                                                  */
     ShowWindow(hWndMain, iCmdShow);
     UpdateWindow(hWndMain);
+    /** On the very first start (no stored text) greet with the info pop-up:          */
+    if (Config.sText.empty()) {
+        ShowInfoDialog(hWndMain);
+    }
     while (GetMessage(&msg, NULL, 0, 0)) {
         TranslateMessage(&msg);
         DispatchMessage(&msg);
@@ -246,6 +252,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) 
         MoveWindow(hWndEdit, 0, 0, LOWORD(lParam), HIWORD(lParam), TRUE);
         SendMessage(hWndEdit, EM_SCROLLCARET, 0, 0);
         return 0;
+    case WM_NCRBUTTONUP:
+        /** Right-click on the title bar opens the info pop-up (instead of the
+            system menu).                                                             */
+        if (wParam == HTCAPTION) {
+            ShowInfoDialog(hwnd);
+            return 0;
+        }
+        break;
     case WM_COMMAND:
         /** If it is from the text-box, parse the text-box message:                   */
         if (LOWORD(wParam) == ID_EDIT) {
@@ -585,4 +599,65 @@ bool vAddVersionInfo(WCHAR* pszwOutput, const WCHAR* pszwEntry) {
         }
     }
     return false;
+}
+
+/** Info pop-up window procedure: *****************************************************/
+
+INT_PTR CALLBACK InfoBoxProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
+    switch (message) {
+    case WM_INITDIALOG: {
+        /** Use the dynamic application name (portable or not) as the title. */
+        SetWindowText(hDlg, szAppName);
+        HWND hInfo = GetDlgItem(hDlg, IDC_INFO_EDIT);
+        if (hInfo) {
+            SendMessage(hInfo, WM_SETTEXT, 0, (LPARAM)pszwInfoText);
+            /** Let the RichEdit turn URLs into clickable links. */
+            SendMessage(hInfo, EM_AUTOURLDETECT, (WPARAM)TRUE, 0);
+            SendMessage(hInfo, EM_SETEVENTMASK, 0,
+                        SendMessage(hInfo, EM_GETEVENTMASK, 0, 0) | ENM_LINK);
+        }
+        return TRUE;
+    }
+    case WM_NOTIFY: {
+        LPNMHDR pnmh = (LPNMHDR)lParam;
+        if ((pnmh->code == EN_LINK) && (pnmh->hwndFrom == GetDlgItem(hDlg, IDC_INFO_EDIT))) {
+            ENLINK* pLink = (ENLINK*)lParam;
+            if (pLink->msg == WM_LBUTTONUP) {
+                int iLen = (int)(pLink->chrg.cpMax - pLink->chrg.cpMin);
+                if (iLen > 0) {
+                    std::wstring sUrl((size_t)iLen + 1, L'\0');
+                    TEXTRANGEW tr;
+                    tr.chrg      = pLink->chrg;
+                    tr.lpstrText = &sUrl[0];
+                    SendMessage(pnmh->hwndFrom, EM_GETTEXTRANGE, 0, (LPARAM)&tr);
+                    ShellExecute(NULL, L"open", sUrl.c_str(), NULL, NULL, SW_SHOW);
+                }
+            }
+            return TRUE;
+        }
+        break;
+    }
+    case WM_COMMAND:
+        if ((LOWORD(wParam) == IDOK) || (LOWORD(wParam) == IDCANCEL)) {
+            EndDialog(hDlg, LOWORD(wParam));
+            return TRUE;
+        }
+        break;
+    case WM_CLOSE:
+        EndDialog(hDlg, IDCANCEL);
+        return TRUE;
+    }
+    return FALSE;
+}
+
+/** Opens the modal info pop-up: ******************************************************/
+
+void ShowInfoDialog(HWND hOwner) {
+    /** The dialog hosts a RichEdit control, so make sure the library is loaded. */
+    LoadLibrary(L"Msftedit.dll");
+    INT_PTR result = DialogBox(GetModuleHandle(NULL), MAKEINTRESOURCE(IDD_INFOBOX), hOwner, InfoBoxProc);
+    if (result == -1) {
+        /** RichEdit (or the dialog) was unavailable: fall back to a plain message. */
+        MessageBox(hOwner, pszwInfoText, szAppName, MB_OK | MB_ICONINFORMATION);
+    }
 }

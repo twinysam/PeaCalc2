@@ -37,6 +37,10 @@
 #pragma warning(disable : 4996)
 #endif
 
+/** Defined in PeaCalc.cpp: opens the native info pop-up. *****************************/
+
+void ShowInfoDialog(HWND hOwner);
+
 /** Public Functions: *****************************************************************/
 
 /** Constructor: **********************************************************************/
@@ -50,20 +54,14 @@ CCommandHandler::CCommandHandler(CConfigHandler* Config) {
 CCommandHandler::~CCommandHandler() {
 }
 
-/** Tiny function to store a pointer to the info-text: ********************************/
-
-void CCommandHandler::vSetInfoText(WCHAR* pszwTextPtr) {
-    this->m_pszwInfoText = pszwTextPtr;
-}
-
-/** Set-function, which adds the info-text if there's empty input: ********************/
+/** Set-function, which starts with an empty prompt if there's no stored text: ********/
 
 void CCommandHandler::vSetText(HWND hEditBox, const WCHAR* pszwNewText) {
     TCHAR  buffer[C_TEXTBUFSIZE];
     if (pszwNewText[0] != L'\0') {
         wcscpy(buffer, pszwNewText);
     } else {
-        wcscpy(buffer, m_pszwInfoText);
+        wcscpy(buffer, L"> ");
     }
     SetWindowText(hEditBox, buffer);
     /** Set the selection at its end:                                                   */
@@ -139,10 +137,10 @@ void CCommandHandler::vProcEnter(HWND hMain, HWND hEditBox) {
           m_dwEditLastLF = SendMessage(hEditBox, EM_LINEINDEX, -1, 0);
          return;
     } else if (sInput == L"info") {
-         // Just append the info text
+         // Show the info in a native pop-up instead of inside the calculator
+         ShowInfoDialog(hMain);
          SendMessage(hEditBox, EM_SETSEL, -1, -1);
-         SendMessage(hEditBox, EM_REPLACESEL, 0, (LPARAM)L"\r\n");
-         SendMessage(hEditBox, EM_REPLACESEL, 0, (LPARAM)m_pszwInfoText);
+         SendMessage(hEditBox, EM_REPLACESEL, 0, (LPARAM)L"\r\n> ");
          SendMessage(hEditBox, EM_SETSEL, -1, -1);
          m_dwEditLastLF = SendMessage(hEditBox, EM_LINEINDEX, -1, 0);
          return;

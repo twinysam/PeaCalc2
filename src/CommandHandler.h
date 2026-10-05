@@ -37,7 +37,6 @@ public:
     DWORD           m_dwEditLastLF;
     CCommandHandler(CConfigHandler* Config);
     ~CCommandHandler();
-    void            vSetInfoText(WCHAR* pszwTextPtr);
     void            vSetText(HWND hEditBox, const WCHAR* pszwNewText);
     void            vColorizeText(HWND hEditBox);
     void            vProcEnter(HWND hMain, HWND hEditBox);
@@ -46,7 +45,6 @@ public:
 private:
     CTerm           m_TermMain;
     CConfigHandler* m_pConfig;
-    WCHAR*          m_pszwInfoText;
     std::wstring    sOutputHexInt(double dInput);
     std::wstring    sOutputHexFloat(double dInput);
     std::wstring    sOutputBin(double dInput);

@@ -19,4 +19,6 @@
 /** Definitions: **********************************************************************/
 
 #define IDI_APPICON   100
+#define IDD_INFOBOX   101
 #define ID_EDIT       110
+#define IDC_INFO_EDIT 1001

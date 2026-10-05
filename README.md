@@ -13,7 +13,7 @@ PeaCalc2 introduces a couple aesthetic modern features to the original project:
 
 There is a small set of special commands, which can be executed:
 
-* _info_ displays the current version and copyright-notice.  
+* _info_ opens a native pop-up with the current version, copyright-notice and a clickable project link. The same pop-up is shown on first start and can be opened by right-clicking the title bar.
 * _license_ opens the license-file as as published by the Free Software Foundation.  
 * _help_ opens this file in a browser.
 * _clear_ clears the text-buffer.
